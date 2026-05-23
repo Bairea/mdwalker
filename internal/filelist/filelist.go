@@ -2,6 +2,8 @@ package filelist
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -17,11 +19,14 @@ type Model struct {
 	width    int
 	height   int
 	ready    bool
+	TreeMode bool
 }
 
 var (
 	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("255"))
 	normalStyle   = lipgloss.NewStyle()
+	dimTimeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	dirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
 )
 
 func New() Model {
@@ -33,7 +38,7 @@ func (m *Model) SetFiles(entries []discover.FileEntry) {
 	if m.Cursor >= len(m.Entries) {
 		m.Cursor = 0
 	}
-	m.updateViewport()
+	m.UpdateViewport()
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -42,20 +47,20 @@ func (m *Model) SetSize(width, height int) {
 	m.viewport.Width = width
 	m.viewport.Height = height
 	m.ready = true
-	m.updateViewport()
+	m.UpdateViewport()
 }
 
 func (m *Model) MoveUp() {
 	if m.Cursor > 0 {
 		m.Cursor--
-		m.updateViewport()
+		m.UpdateViewport()
 	}
 }
 
 func (m *Model) MoveDown() {
 	if m.Cursor < len(m.Entries)-1 {
 		m.Cursor++
-		m.updateViewport()
+		m.UpdateViewport()
 	}
 }
 
@@ -66,22 +71,103 @@ func (m Model) SelectedFile() string {
 	return ""
 }
 
-func (m *Model) updateViewport() {
+func (m *Model) ToggleTreeMode() {
+	m.TreeMode = !m.TreeMode
+	m.UpdateViewport()
+}
+
+func (m *Model) UpdateViewport() {
+	var content string
+	if m.TreeMode {
+		content = m.buildTreeView()
+	} else {
+		content = m.buildFlatView()
+	}
+	m.viewport.SetContent(content)
+}
+
+func (m Model) buildFlatView() string {
 	var b strings.Builder
 	for i, entry := range m.Entries {
 		line := m.renderLine(entry, i == m.Cursor)
 		b.WriteString(line + "\n")
 	}
-	m.viewport.SetContent(b.String())
+	return b.String()
 }
 
 func (m Model) renderLine(entry discover.FileEntry, selected bool) string {
-	timeStr := discover.TimeAgo(entry.ModTime)
-	line := fmt.Sprintf(" %-*s %s", m.width-15, entry.Path, timeStr)
+	timeStr := dimTimeStyle.Render(discover.TimeAgo(entry.ModTime))
+	availWidth := m.width - 15
+	if availWidth < 10 {
+		availWidth = 10
+	}
+	path := entry.Path
+	if len(path) > availWidth {
+		path = path[:availWidth]
+	}
+	line := fmt.Sprintf(" %-*s %s", availWidth, path, timeStr)
 	if selected {
 		return selectedStyle.Render(line)
 	}
 	return normalStyle.Render(line)
+}
+
+func (m Model) buildTreeView() string {
+	groups := make(map[string][]discover.FileEntry)
+	var dirs []string
+	for _, e := range m.Entries {
+		dir := filepath.Dir(e.Path)
+		if _, ok := groups[dir]; !ok {
+			dirs = append(dirs, dir)
+		}
+		groups[dir] = append(groups[dir], e)
+	}
+	sort.Strings(dirs)
+
+	lineIdx := 0
+	var b strings.Builder
+	for di, dir := range dirs {
+		isLastDir := di == len(dirs)-1
+		if dir != "." {
+			dirPrefix := "├─ "
+			if isLastDir {
+				dirPrefix = "└─ "
+			}
+			line := dirPrefix + dirStyle.Render(dir+"/")
+			if lineIdx == m.Cursor {
+				line = selectedStyle.Render(line)
+			}
+			b.WriteString(line + "\n")
+			lineIdx++
+		}
+		entries := groups[dir]
+		for ei, e := range entries {
+			isLastEntry := isLastDir && ei == len(entries)-1
+			var prefix string
+			if dir == "." {
+				if isLastEntry {
+					prefix = "└─ "
+				} else {
+					prefix = "├─ "
+				}
+			} else {
+				if isLastEntry {
+					prefix = "  └─ "
+				} else {
+					prefix = "  ├─ "
+				}
+			}
+			name := filepath.Base(e.Path)
+			timeStr := dimTimeStyle.Render(" " + discover.TimeAgo(e.ModTime))
+			line := prefix + name + timeStr
+			if lineIdx == m.Cursor {
+				line = selectedStyle.Render(line)
+			}
+			b.WriteString(line + "\n")
+			lineIdx++
+		}
+	}
+	return b.String()
 }
 
 func (m Model) View() string {
