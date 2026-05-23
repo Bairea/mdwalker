@@ -17,7 +17,6 @@ import (
 	"github.com/bairea/mdwalker/internal/outline"
 	"github.com/bairea/mdwalker/internal/preview"
 	"github.com/bairea/mdwalker/internal/search"
-	"github.com/bairea/mdwalker/internal/semantic"
 	"github.com/bairea/mdwalker/internal/watch"
 )
 
@@ -348,21 +347,32 @@ func (m Model) View() string {
 	filesView := m.files.View()
 	previewView := m.preview.View()
 
-	_ = semantic.Scan(m.preview.Content())
-
 	outlineView := m.outline.View()
-	if outlineView != "" {
+	if outlineView != "" && m.filesWidth > 0 {
 		outlineWidth := lipgloss.Width(outlineView)
-		previewLines := strings.Split(previewView, "\n")
-		for i := range previewLines {
-			if i == 0 {
-				if len(previewLines[i])+outlineWidth > m.width && m.width > outlineWidth {
-					previewLines[i] = previewLines[i][:m.width-outlineWidth]
+		// Only overlay if outline fits within preview area
+		previewWidth := m.width - m.filesWidth - 1
+		if outlineWidth < previewWidth {
+			previewLines := strings.Split(previewView, "\n")
+			outlineLines := strings.Split(outlineView, "\n")
+			for i := 0; i < len(outlineLines) && i < len(previewLines); i++ {
+				ol := outlineLines[i]
+				pl := previewLines[i]
+				plWidth := lipgloss.Width(pl)
+				// Right-align the preview line then overlay outline on right
+				spaceForPreview := previewWidth - outlineWidth
+				if plWidth > spaceForPreview {
+					pl = pl[:spaceForPreview]
+					plWidth = spaceForPreview
 				}
+				padding := spaceForPreview - plWidth
+				if padding < 0 {
+					padding = 0
+				}
+				previewLines[i] = pl + strings.Repeat(" ", padding) + ol
 			}
+			previewView = strings.Join(previewLines, "\n")
 		}
-		previewView = strings.Join(previewLines, "\n")
-		previewView = lipgloss.JoinHorizontal(lipgloss.Top, previewView, outlineView)
 	}
 
 	var mainView string
