@@ -122,7 +122,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 
 	case tea.MouseMsg:
-		// pass through for text selection
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if m.filesWidth > 0 && msg.X < m.filesWidth {
+				m.focus = focusFiles
+			} else {
+				m.focus = focusPreview
+			}
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -142,14 +148,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = (m.focus + 1) % 2
 			}
 
-		case "h":
-			if m.focus != focusFiles {
-				m.focus = focusFiles
+		case "h", "left":
+			m.moveFocusLeft()
+
+		case "l", "right":
+			m.moveFocusRight()
+
+		case " ":
+			if m.focus == focusPreview && !m.search.Active {
+				line := m.preview.CurrentLine()
+				m.preview.ToggleFold(line)
 			}
 
-		case "l":
-			if m.focus != focusPreview && !m.outline.Visible {
-				m.focus = focusPreview
+		case "t":
+			if m.focus == focusFiles {
+				m.files.ToggleTreeMode()
 			}
 
 		case "o":
@@ -228,14 +241,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "n":
-			if m.search.Active {
+			if m.search.Active && m.search.Mode == search.ModeFileName {
+				m.search.Next()
+				idx := m.search.CurrentFileIndex()
+				if idx >= 0 && idx < len(m.files.Entries) {
+					m.files.Cursor = idx
+					m.files.UpdateViewport()
+				}
+			} else if m.search.Active {
 				m.search.Next()
 				line := m.search.CurrentLine()
 				m.preview.ScrollToLine(line)
 			}
 
 		case "N":
-			if m.search.Active {
+			if m.search.Active && m.search.Mode == search.ModeFileName {
+				m.search.Prev()
+				idx := m.search.CurrentFileIndex()
+				if idx >= 0 && idx < len(m.files.Entries) {
+					m.files.Cursor = idx
+					m.files.UpdateViewport()
+				}
+			} else if m.search.Active {
 				m.search.Prev()
 				line := m.search.CurrentLine()
 				m.preview.ScrollToLine(line)
@@ -438,3 +465,33 @@ func (m Model) renderStatusBar() string {
 
 	return bar.Render(left + strings.Repeat(" ", padding) + right)
 }
+func (m *Model) moveFocusLeft() {
+	if m.outline.Visible {
+		switch m.focus {
+		case focusPreview:
+			m.focus = focusOutline
+		case focusOutline:
+			m.focus = focusFiles
+		}
+	} else {
+		if m.focus == focusPreview {
+			m.focus = focusFiles
+		}
+	}
+}
+
+func (m *Model) moveFocusRight() {
+	if m.outline.Visible {
+		switch m.focus {
+		case focusFiles:
+			m.focus = focusOutline
+		case focusOutline:
+			m.focus = focusPreview
+		}
+	} else {
+		if m.focus == focusFiles {
+			m.focus = focusPreview
+		}
+	}
+}
+
