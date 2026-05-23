@@ -176,10 +176,6 @@ func (m *Model) renderFolded() {
 	m.viewport.SetContent(rendered)
 }
 
-func (m *Model) render() {
-	m.renderFolded()
-}
-
 func (m *Model) ScrollUp()           { m.viewport.LineUp(1) }
 func (m *Model) ScrollDown()         { m.viewport.LineDown(1) }
 func (m *Model) ScrollTop()          { m.viewport.GotoTop() }
