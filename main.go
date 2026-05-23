@@ -6,13 +6,17 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/bairea/mdwalker/internal/app"
+	"github.com/bairea/mdwalker/internal/cli"
 )
 
 func main() {
-	root := "."
-	if len(os.Args) > 1 {
-		root = os.Args[1]
+	args := cli.Parse()
+
+	root := args.Root
+	if len(args.Files) > 0 {
+		root = args.Files[0]
 	}
+
 	p := tea.NewProgram(
 		app.New(root),
 		tea.WithAltScreen(),
