@@ -7,19 +7,35 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/bairea/mdwalker/internal/discover"
+)
+
+type SearchMode int
+
+const (
+	ModeContent SearchMode = iota
+	ModeFileName
 )
 
 type Model struct {
-	input   textinput.Model
-	Active  bool
-	Query   string
-	Matches []Match
-	Current int
+	input       textinput.Model
+	Active      bool
+	Mode        SearchMode
+	Query       string
+	Matches     []Match
+	Current     int
+	FileMatches []FileMatch
+	FileCurrent int
 }
 
 type Match struct {
 	Line int
 	Text string
+}
+
+type FileMatch struct {
+	Index int
+	Entry discover.FileEntry
 }
 
 var (
@@ -34,12 +50,35 @@ func New() Model {
 	return Model{input: ti}
 }
 
-func (m *Model) Activate() {
+func (m *Model) Activate(mode SearchMode) {
 	m.Active = true
+	m.Mode = mode
 	m.input.Focus()
 	m.Query = ""
 	m.Matches = nil
+	m.FileMatches = nil
 	m.Current = 0
+	m.FileCurrent = 0
+	m.input.SetValue("")
+	if mode == ModeFileName {
+		m.input.Placeholder = "search files..."
+	} else {
+		m.input.Placeholder = "search..."
+	}
+}
+
+func (m *Model) ToggleMode() {
+	if m.Mode == ModeContent {
+		m.Mode = ModeFileName
+		m.input.Placeholder = "search files..."
+	} else {
+		m.Mode = ModeContent
+		m.input.Placeholder = "search..."
+	}
+	m.Matches = nil
+	m.FileMatches = nil
+	m.Current = 0
+	m.FileCurrent = 0
 }
 
 func (m *Model) Deactivate() {
@@ -47,6 +86,9 @@ func (m *Model) Deactivate() {
 	m.input.Blur()
 	m.Query = ""
 	m.Matches = nil
+	m.FileMatches = nil
+	m.Current = 0
+	m.FileCurrent = 0
 }
 
 func (m *Model) Search(content string) {
@@ -67,17 +109,57 @@ func (m *Model) Search(content string) {
 	}
 }
 
+func (m *Model) SearchFiles(entries []discover.FileEntry) {
+	if m.Query == "" {
+		m.FileMatches = nil
+		return
+	}
+	m.FileMatches = nil
+	lower := strings.ToLower(m.Query)
+	for i, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Path), lower) {
+			m.FileMatches = append(m.FileMatches, FileMatch{Index: i, Entry: entry})
+		}
+	}
+	if m.FileCurrent >= len(m.FileMatches) {
+		m.FileCurrent = 0
+	}
+}
+
 func (m *Model) Next() {
+	if m.Mode == ModeFileName {
+		m.NextFile()
+		return
+	}
 	if len(m.Matches) > 0 {
 		m.Current = (m.Current + 1) % len(m.Matches)
 	}
 }
 
 func (m *Model) Prev() {
+	if m.Mode == ModeFileName {
+		m.PrevFile()
+		return
+	}
 	if len(m.Matches) > 0 {
 		m.Current--
 		if m.Current < 0 {
 			m.Current = len(m.Matches) - 1
+		}
+	}
+}
+
+func (m *Model) NextFile() {
+	if len(m.FileMatches) > 0 {
+		m.FileCurrent = (m.FileCurrent + 1) % len(m.FileMatches)
+	}
+}
+
+func (m *Model) PrevFile() {
+	if len(m.FileMatches) > 0 {
+		m.FileCurrent--
+		if m.FileCurrent < 0 {
+			m.FileCurrent = len(m.FileMatches) - 1
 		}
 	}
 }
@@ -89,15 +171,36 @@ func (m Model) CurrentLine() int {
 	return 0
 }
 
+func (m Model) CurrentFileIndex() int {
+	if m.FileCurrent < len(m.FileMatches) {
+		return m.FileMatches[m.FileCurrent].Index
+	}
+	return -1
+}
+
+func (m *Model) UpdateSearch(files []discover.FileEntry, content string) {
+	if m.Mode == ModeFileName {
+		m.SearchFiles(files)
+	} else {
+		m.Search(content)
+	}
+}
+
 func (m Model) View() string {
 	if !m.Active {
 		return ""
 	}
-	count := ""
-	if len(m.Matches) > 0 {
-		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.Current+1, len(m.Matches)))
+	modeLabel := countStyle.Render("[content]")
+	if m.Mode == ModeFileName {
+		modeLabel = countStyle.Render("[files]")
 	}
-	return barStyle.Render(" /" + m.input.View() + count)
+	count := ""
+	if m.Mode == ModeContent && len(m.Matches) > 0 {
+		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.Current+1, len(m.Matches)))
+	} else if m.Mode == ModeFileName && len(m.FileMatches) > 0 {
+		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.FileCurrent+1, len(m.FileMatches)))
+	}
+	return barStyle.Render(" /" + m.input.View() + " " + modeLabel + count + " Tab:switch Esc:cancel")
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {

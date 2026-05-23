@@ -133,7 +133,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			if m.outline.Visible {
+			if m.search.Active {
+				m.search.ToggleMode()
+				m.search.UpdateSearch(m.files.Entries, m.preview.Content())
+			} else if m.outline.Visible {
 				m.focus = (m.focus + 1) % 3
 			} else {
 				m.focus = (m.focus + 1) % 2
@@ -181,6 +184,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter":
+			if m.search.Active && m.search.Mode == search.ModeFileName {
+				idx := m.search.CurrentFileIndex()
+				if idx >= 0 && idx < len(m.files.Entries) {
+					path := m.files.Entries[idx].Path
+					currentPath := m.preview.FilePath()
+					if currentPath != "" && currentPath != path {
+						m.history = append(m.history, currentPath)
+					}
+					m.preview.LoadFile(m.root, path)
+					m.outline.SetContent(m.preview.Content())
+					m.codeBlocks = codeblock.Extract(m.preview.Content())
+					m.search.Deactivate()
+					m.focus = focusPreview
+				}
+				break
+			}
 			switch m.focus {
 			case focusFiles:
 				m.openSelectedFile()
@@ -191,7 +210,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "/":
-			m.search.Activate()
+			if m.focus == focusFiles {
+				m.search.Activate(search.ModeFileName)
+			} else {
+				m.search.Activate(search.ModeContent)
+			}
 			m.focus = focusSearch
 
 		case "esc":
@@ -277,7 +300,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.search.Active {
 		m.search, cmd = m.search.Update(msg)
-		m.search.Search(m.preview.Content())
+		m.search.UpdateSearch(m.files.Entries, m.preview.Content())
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
