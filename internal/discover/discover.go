@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/bairea/mdwalker/internal/config"
 )
 
 type FileEntry struct {
@@ -28,7 +30,7 @@ var priorityFiles = map[string]int{
 	"README.md": 3,
 }
 
-var priorityDirs = []string{".ai", ".claude", ".codex"}
+var priorityDirs = []string{".ai", ".claude", ".codex", ".agents", ".pi", ".trae", ".omx"}
 var secondaryDirs = []string{"docs", "notes", "reports"}
 var previewableExts = map[string]bool{
 	".md":   true,
@@ -39,7 +41,7 @@ var previewableExts = map[string]bool{
 	".webp": true,
 }
 
-func Scan(root string) ([]FileEntry, error) {
+func Scan(root string, wl *config.WhitelistConfig) ([]FileEntry, error) {
 	entries, err := scanWithFD(root)
 	if err != nil {
 		entries, err = scanNative(root)
@@ -47,6 +49,12 @@ func Scan(root string) ([]FileEntry, error) {
 			return nil, err
 		}
 	}
+	if wl != nil {
+		unignoreEntries := scanUnignoreDirs(root, wl)
+		entries = append(entries, unignoreEntries...)
+	}
+	entries = filterSkipSubdirs(entries, wl)
+	entries = dedupEntries(entries)
 	sortEntries(entries)
 	return entries, nil
 }
@@ -56,7 +64,7 @@ func scanWithFD(root string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"--type", "f", "--extension", "md", "--extension", "png", "--extension", "jpg", "--extension", "jpeg", "--extension", "gif", "--extension", "webp", "--search-path", root}
+	args := []string{"--type", "f", "-H", "--extension", "md", "--extension", "png", "--extension", "jpg", "--extension", "jpeg", "--extension", "gif", "--extension", "webp", "--search-path", root}
 	cmd := exec.Command("fd", args...)
 	out, err := cmd.Output()
 	if err != nil {
@@ -104,6 +112,75 @@ func scanNative(root string) ([]FileEntry, error) {
 		return nil
 	})
 	return entries, err
+}
+
+func scanUnignoreDirs(root string, wl *config.WhitelistConfig) []FileEntry {
+	var entries []FileEntry
+	scanDir := func(dir string) {
+		filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				rel, _ := filepath.Rel(root, path)
+				if shouldSkipDir(rel, wl.SkipSubdirs) {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if isPreviewableFile(d.Name()) {
+				info, _ := d.Info()
+				rel, _ := filepath.Rel(root, path)
+				entries = append(entries, FileEntry{
+					Path:    rel,
+					ModTime: info.ModTime(),
+				})
+			}
+			return nil
+		})
+	}
+	for _, d := range wl.Unignore.DotDirs {
+		scanDir(d)
+	}
+	for _, p := range wl.Unignore.Paths {
+		scanDir(p)
+	}
+	return entries
+}
+
+func shouldSkipDir(relPath string, skipPatterns []string) bool {
+	for _, pat := range skipPatterns {
+		if matched, _ := filepath.Match(pat, relPath); matched {
+			return true
+		}
+	}
+	return false
+}
+
+func filterSkipSubdirs(entries []FileEntry, wl *config.WhitelistConfig) []FileEntry {
+	if wl == nil || len(wl.SkipSubdirs) == 0 {
+		return entries
+	}
+	var filtered []FileEntry
+	for _, e := range entries {
+		if shouldSkipDir(filepath.Dir(e.Path), wl.SkipSubdirs) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
+}
+
+func dedupEntries(entries []FileEntry) []FileEntry {
+	seen := make(map[string]bool, len(entries))
+	var out []FileEntry
+	for _, e := range entries {
+		if !seen[e.Path] {
+			seen[e.Path] = true
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func isPreviewableFile(name string) bool {
