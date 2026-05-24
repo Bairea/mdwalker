@@ -1,4 +1,4 @@
-package mermaid
+package markdown
 
 import (
 	"crypto/sha256"
@@ -14,15 +14,15 @@ type Diagram struct {
 	Hash    string
 }
 
-func CacheDir() string {
+func MermaidCacheDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".cache", "mdwalker", "mermaid")
 }
 
-func Render(content string) (string, error) {
+func RenderMermaid(content string) (string, error) {
 	h := sha256.Sum256([]byte(content))
 	hash := fmt.Sprintf("%x", h[:16])
-	cacheDir := CacheDir()
+	cacheDir := MermaidCacheDir()
 	os.MkdirAll(cacheDir, 0755)
 	pngPath := filepath.Join(cacheDir, hash+".png")
 
@@ -43,8 +43,8 @@ func Render(content string) (string, error) {
 	return pngPath, nil
 }
 
-func CleanCache() {
-	cacheDir := CacheDir()
+func CleanMermaidCache() {
+	cacheDir := MermaidCacheDir()
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		return

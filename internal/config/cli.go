@@ -1,4 +1,4 @@
-package cli
+package config
 
 import (
 	"flag"
@@ -13,7 +13,7 @@ type Args struct {
 	ShowTime bool
 }
 
-func Parse() Args {
+func ParseArgs() Args {
 	var a Args
 	noWatch := flag.Bool("no-watch", false, "disable file watching")
 	mermaid := flag.String("mermaid", "auto", "mermaid mode: auto, code, browser")

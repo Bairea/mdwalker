@@ -1,4 +1,4 @@
-package image
+package markdown
 
 import (
 	"encoding/base64"
@@ -18,7 +18,7 @@ type ImageRef struct {
 
 var imgRe = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
 
-func Extract(content string) []ImageRef {
+func ExtractImages(content string) []ImageRef {
 	var refs []ImageRef
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
@@ -34,15 +34,15 @@ func Extract(content string) []ImageRef {
 	return refs
 }
 
-func OpenWithDefault(path string) error {
+func OpenImage(path string) error {
 	return exec.Command("open", path).Run()
 }
 
-func RenderPlaceholder(ref ImageRef) string {
+func RenderImagePlaceholder(ref ImageRef) string {
 	return "[Image: " + ref.Path + "]  press i to open"
 }
 
-func ToHalfblock(path string, width, height int) (string, error) {
+func ImageToHalfblock(path string, width, height int) (string, error) {
 	if width <= 0 {
 		width = 80
 	}
@@ -73,7 +73,7 @@ func TerminalSupportsImages() bool {
 	return false
 }
 
-func RenderInline(path string, width, height int) string {
+func RenderImageInline(path string, width, height int) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

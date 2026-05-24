@@ -1,4 +1,4 @@
-package semantic
+package markdown
 
 import (
 	"regexp"
@@ -31,7 +31,7 @@ var (
 	}
 )
 
-func Scan(content string) map[int]Highlight {
+func ScanSemantic(content string) map[int]Highlight {
 	results := make(map[int]Highlight)
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
@@ -45,7 +45,7 @@ func Scan(content string) map[int]Highlight {
 	return results
 }
 
-func ApplyLine(line string, h *Highlight) string {
+func ApplySemanticLine(line string, h *Highlight) string {
 	if h == nil {
 		return line
 	}

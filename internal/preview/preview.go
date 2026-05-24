@@ -10,8 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 
-	mdimage "github.com/bairea/mdwalker/internal/image"
-	"github.com/bairea/mdwalker/internal/mermaid"
+	"github.com/bairea/mdwalker/internal/markdown"
 )
 
 type Heading struct {
@@ -407,7 +406,7 @@ func (m Model) replaceMermaidWithPlaceholders(content string, blocks *[]mediaBlo
 func (m Model) replaceImagesWithPlaceholders(content string, blocks *[]mediaBlock) string {
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
-		refs := mdimage.Extract(line)
+		refs := markdown.ExtractImages(line)
 		if len(refs) == 0 {
 			continue
 		}
@@ -429,18 +428,18 @@ func (m Model) renderMermaidBlock(content string) string {
 	if !m.renderMedia {
 		return "[Mermaid: press Enter to render]"
 	}
-	path, err := mermaid.Render(content)
+	path, err := markdown.RenderMermaid(content)
 	if err != nil {
 		return "[Mermaid: render unavailable: " + err.Error() + "]"
 	}
 	w, h := m.mediaWidth(), m.mediaHeight()
-	if mdimage.TerminalSupportsImages() {
-		rendered := mdimage.RenderInline(path, w, h)
+	if markdown.TerminalSupportsImages() {
+		rendered := markdown.RenderImageInline(path, w, h)
 		if strings.TrimSpace(rendered) != "" {
 			return "\n" + rendered + "\n"
 		}
 	}
-	rendered, err := mdimage.ToHalfblock(path, w, h)
+	rendered, err := markdown.ImageToHalfblock(path, w, h)
 	if err == nil && strings.TrimSpace(rendered) != "" {
 		return "\n" + rendered + "\n"
 	}
@@ -457,20 +456,20 @@ func (m Model) resolveAssetPath(path string) string {
 
 func (m Model) renderImage(fullPath, displayPath string) string {
 	if !m.renderMedia {
-		return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
+		return markdown.RenderImagePlaceholder(markdown.ImageRef{Path: displayPath})
 	}
 	w, h := m.mediaWidth(), m.mediaHeight()
-	if mdimage.TerminalSupportsImages() {
-		rendered := mdimage.RenderInline(fullPath, w, h)
+	if markdown.TerminalSupportsImages() {
+		rendered := markdown.RenderImageInline(fullPath, w, h)
 		if strings.TrimSpace(rendered) != "" {
 			return "\n" + rendered + "\n"
 		}
 	}
-	rendered, err := mdimage.ToHalfblock(fullPath, w, h)
+	rendered, err := markdown.ImageToHalfblock(fullPath, w, h)
 	if err == nil && strings.TrimSpace(rendered) != "" {
 		return "\n" + rendered + "\n"
 	}
-	return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
+	return markdown.RenderImagePlaceholder(markdown.ImageRef{Path: displayPath})
 }
 
 func (m Model) mediaWidth() int {

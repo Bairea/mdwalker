@@ -6,11 +6,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/bairea/mdwalker/internal/app"
-	"github.com/bairea/mdwalker/internal/cli"
+	"github.com/bairea/mdwalker/internal/config"
 )
 
 func main() {
-	args := cli.Parse()
+	args := config.ParseArgs()
 
 	root := args.Root
 	if len(args.Files) > 0 {

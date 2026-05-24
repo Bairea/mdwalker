@@ -1,4 +1,4 @@
-package codeblock
+package markdown
 
 import (
 	"os/exec"
@@ -12,7 +12,7 @@ type Block struct {
 	Content   string
 }
 
-func Extract(content string) []Block {
+func ExtractBlocks(content string) []Block {
 	var blocks []Block
 	lines := strings.Split(content, "\n")
 	inBlock := false
