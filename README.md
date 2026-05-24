@@ -14,6 +14,7 @@ AI agent 输出物专用终端 Markdown 工作台 — 在终端中快速浏览�
 - **代码块操作** — 按 `y` 复制当前代码块到剪贴板
 - **文件监听** — 自动检测目录变化，实时更新文件列表
 - **历史导航** — 按 `b` 返回上一个打开的文件
+- **目录白名单** — 自动发现 `.claude/`、`.agents/` 等 AI 工具目录中被 `.gitignore` 忽略的文档，排除 `*/skills/` 子目录
 
 ## 安装
 
@@ -281,7 +282,9 @@ vhs demo.tape
 
 ## 配置
 
-配置文件 `~/.config/mdwalker/config.toml`：
+### config.toml
+
+`~/.config/mdwalker/config.toml`：
 
 ```toml
 # 图片协议: auto, kitty, halfblock, off
@@ -296,3 +299,26 @@ mmdc_path = "mmdc"
 # 显示文件修改时间（默认 false）
 show_time = false
 ```
+
+### whitelist.yaml
+
+`~/.config/mdwalker/whitelist.yaml`（全局）和项目根目录 `mdwalker-whitelist.yaml`（可选，与全局合并）：
+
+```yaml
+# 被 .gitignore 但需要 mdwalker 扫描的目录
+unignore:
+  dot_dirs:    # 隐藏 AI 工具目录
+    - .claude
+    - .agents
+  paths:       # 普通目录
+    - docs/superpowers
+  files:       # 单独文件
+    - AGENTS.md
+    - CLAUDE.md
+
+# unignore 扫描时跳过的子目录
+skip_subdirs:
+  - "*/skills"
+```
+
+内置默认值覆盖 31 个 AI 工具的 `.X` 目录（`.claude`、`.agents`、`.pi`、`.trae`、`.augment`、`.windsurf` 等），无需手动配置即可使用。
