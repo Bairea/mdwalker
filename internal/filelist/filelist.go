@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bairea/mdwalker/internal/discover"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/bairea/mdwalker/internal/discover"
 )
 
 type Model struct {
@@ -71,6 +71,19 @@ func (m Model) SelectedFile() string {
 	return ""
 }
 
+func (m *Model) SelectVisibleRow(row int) bool {
+	if row < 0 {
+		return false
+	}
+	idx := m.viewport.YOffset + row
+	if idx < 0 || idx >= len(m.Entries) {
+		return false
+	}
+	m.Cursor = idx
+	m.UpdateViewport()
+	return true
+}
+
 func (m *Model) ToggleTreeMode() {
 	m.TreeMode = !m.TreeMode
 	m.UpdateViewport()
@@ -101,15 +114,34 @@ func (m Model) renderLine(entry discover.FileEntry, selected bool) string {
 	if availWidth < 10 {
 		availWidth = 10
 	}
-	path := entry.Path
-	if len(path) > availWidth {
-		path = path[:availWidth]
+	name := entry.Path
+	if m.width <= 32 {
+		name = filepath.Base(entry.Path)
 	}
-	line := fmt.Sprintf(" %-*s %s", availWidth, path, timeStr)
+	nameWidth := availWidth - 2
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+	name = truncateStart(name, nameWidth)
+	label := "• " + name
+	line := fmt.Sprintf(" %-*s %s", availWidth, label, timeStr)
 	if selected {
 		return selectedStyle.Render(line)
 	}
 	return normalStyle.Render(line)
+}
+
+func truncateStart(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if len(s) <= width {
+		return s
+	}
+	if width <= 3 {
+		return s[len(s)-width:]
+	}
+	return "..." + s[len(s)-(width-3):]
 }
 
 func (m Model) buildTreeView() string {
