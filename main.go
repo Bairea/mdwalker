@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -9,8 +10,16 @@ import (
 	"github.com/bairea/mdwalker/internal/config"
 )
 
+var version = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
 	args := config.ParseArgs()
+
+	if *showVersion {
+		fmt.Printf("mdwalker %s\n", version)
+		os.Exit(0)
+	}
 
 	root := args.Root
 	if len(args.Files) > 0 {
