@@ -3,7 +3,10 @@ package discover
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/bairea/mdwalker/internal/config"
 )
 
 func TestScanIncludesMarkdownAndPreviewableImages(t *testing.T) {
@@ -30,5 +33,71 @@ func TestScanIncludesMarkdownAndPreviewableImages(t *testing.T) {
 	}
 	if got["ignored.txt"] {
 		t.Fatalf("Scan() included unsupported file ignored.txt")
+	}
+}
+
+func TestScanSkipSubdirs(t *testing.T) {
+	dir := t.TempDir()
+	os.Chdir(dir)
+
+	os.MkdirAll(filepath.Join(".claude", "skills", "golang-cli"), 0755)
+	os.WriteFile(filepath.Join(".claude", "skills", "golang-cli", "SKILL.md"), []byte("# skill"), 0644)
+	os.WriteFile(filepath.Join(".claude", "CLAUDE.md"), []byte("# claude config"), 0644)
+
+	wl := &config.WhitelistConfig{
+		Unignore: config.WhitelistUnignore{
+			DotDirs: []string{".claude"},
+		},
+		SkipSubdirs: []string{"*/skills"},
+	}
+
+	entries, err := Scan(dir, wl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, e := range entries {
+		if strings.Contains(e.Path, "/skills/") {
+			t.Errorf("entry in skipped dir should not appear: %s", e.Path)
+		}
+	}
+
+	foundClaudeMD := false
+	for _, e := range entries {
+		if e.Path == filepath.Join(".claude", "CLAUDE.md") {
+			foundClaudeMD = true
+		}
+	}
+	if !foundClaudeMD {
+		t.Error("expected .claude/CLAUDE.md to be discovered")
+	}
+}
+
+func TestScanDedup(t *testing.T) {
+	dir := t.TempDir()
+	os.Chdir(dir)
+
+	os.MkdirAll("docs", 0755)
+	os.WriteFile(filepath.Join("docs", "design.md"), []byte("# design"), 0644)
+
+	wl := &config.WhitelistConfig{
+		Unignore: config.WhitelistUnignore{
+			Paths: []string{"docs"},
+		},
+	}
+
+	entries, err := Scan(dir, wl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, e := range entries {
+		if e.Path == filepath.Join("docs", "design.md") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 entry for design.md, got %d (duplicate detected)", count)
 	}
 }

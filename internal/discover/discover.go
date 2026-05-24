@@ -150,8 +150,11 @@ func scanUnignoreDirs(root string, wl *config.WhitelistConfig) []FileEntry {
 
 func shouldSkipDir(relPath string, skipPatterns []string) bool {
 	for _, pat := range skipPatterns {
-		if matched, _ := filepath.Match(pat, relPath); matched {
-			return true
+		for dir := relPath; dir != "." && dir != "/"; {
+			if matched, _ := filepath.Match(pat, dir); matched {
+				return true
+			}
+			dir = filepath.Dir(dir)
 		}
 	}
 	return false
