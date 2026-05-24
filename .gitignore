@@ -1,0 +1,19 @@
+# Binary
+mdwalker
+
+# Claude / AI tooling
+.claude/
+.agents/
+.pi/
+.trae/
+AGENTS.md
+skills-lock.json
+skills/
+
+# Design docs and PRDs
+docs/superpowers/
+prd*
+
+# OS files
+.DS_Store
+Thumbs.db
