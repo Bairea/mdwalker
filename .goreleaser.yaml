@@ -32,7 +32,6 @@ brews:
   - repository:
       owner: Bairea
       name: homebrew-tap
-    token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/Bairea/mdwalker"
     description: "AI agent 输出物专用终端 Markdown 工作台"
     license: "MIT"
@@ -43,7 +42,6 @@ scoops:
   - repository:
       owner: Bairea
       name: scoop-bucket
-    token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/Bairea/mdwalker"
     description: "AI agent 输出物专用终端 Markdown 工作台"
     license: "MIT"
