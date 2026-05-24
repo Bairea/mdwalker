@@ -28,6 +28,7 @@ type Model struct {
 	headings    []Heading
 	foldStates  map[int]bool
 	cursorLine  int
+	rendered    string
 	renderMedia bool
 	width       int
 	height      int
@@ -202,9 +203,11 @@ func (m *Model) renderFolded() {
 	filtered = m.transformPreviewMarkdown(filtered)
 	rendered, err := m.renderer.Render(filtered)
 	if err != nil {
+		m.rendered = filtered
 		m.viewport.SetContent(filtered)
 		return
 	}
+	m.rendered = rendered
 	m.viewport.SetContent(rendered)
 }
 
@@ -220,7 +223,55 @@ func (m Model) Content() string  { return m.content }
 func (m Model) CurrentLine() int { return m.cursorLine }
 func (m *Model) ScrollToLine(line int) {
 	m.cursorLine = line
-	m.viewport.SetYOffset(line)
+	m.viewport.SetYOffset(m.renderedOffsetForLine(line))
+}
+
+func (m Model) renderedOffsetForLine(line int) int {
+	sourceLines := strings.Split(m.content, "\n")
+	if line < 0 || line >= len(sourceLines) {
+		return line
+	}
+
+	candidates := targetLineCandidates(sourceLines[line])
+	if len(candidates) == 0 {
+		return line
+	}
+
+	renderedLines := strings.Split(m.rendered, "\n")
+	start := line - 5
+	if start < 0 {
+		start = 0
+	}
+	if idx := findRenderedLine(renderedLines[start:], candidates); idx >= 0 {
+		return start + idx
+	}
+	if idx := findRenderedLine(renderedLines, candidates); idx >= 0 {
+		return idx
+	}
+	return line
+}
+
+func targetLineCandidates(line string) []string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return nil
+	}
+	candidates := []string{trimmed}
+	if strings.HasPrefix(trimmed, "#") {
+		candidates = append(candidates, strings.TrimSpace(strings.TrimLeft(trimmed, "#")))
+	}
+	return candidates
+}
+
+func findRenderedLine(lines []string, candidates []string) int {
+	for i, line := range lines {
+		for _, candidate := range candidates {
+			if candidate != "" && strings.Contains(line, candidate) {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func (m *Model) SetCursorFromVisibleRow(row int) {

@@ -157,6 +157,36 @@ func TestToggleFoldFoldsCurrentSectionWhenCursorIsInsideIt(t *testing.T) {
 	}
 }
 
+func TestScrollToLinePlacesRenderedHeadingAtTop(t *testing.T) {
+	root := t.TempDir()
+	var b strings.Builder
+	b.WriteString("# Top\n\n")
+	for i := 0; i < 20; i++ {
+		b.WriteString("filler paragraph with enough text to render\n\n")
+	}
+	targetLine := strings.Count(b.String(), "\n")
+	b.WriteString("## Target Heading\nbody\n")
+	for i := 0; i < 20; i++ {
+		b.WriteString("after target filler\n\n")
+	}
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte(b.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New()
+	m.SetSize(80, 8)
+	if err := m.LoadFile(root, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	m.ScrollToLine(targetLine)
+
+	firstLine := strings.Split(m.View(), "\n")[0]
+	if !strings.Contains(firstLine, "Target Heading") {
+		t.Fatalf("ScrollToLine did not place rendered heading at top; first line=%q view=%q", firstLine, m.View())
+	}
+}
+
 func installFakeChafa(t *testing.T, dir, logPath string) {
 	t.Helper()
 	writeExecutable(t, filepath.Join(dir, "chafa"), `#!/bin/sh
