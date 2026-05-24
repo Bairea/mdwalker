@@ -8,16 +8,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/bairea/mdwalker/internal/codeblock"
 	"github.com/bairea/mdwalker/internal/config"
 	"github.com/bairea/mdwalker/internal/discover"
 	"github.com/bairea/mdwalker/internal/filelist"
-	"github.com/bairea/mdwalker/internal/image"
-	"github.com/bairea/mdwalker/internal/mermaid"
+	"github.com/bairea/mdwalker/internal/markdown"
 	"github.com/bairea/mdwalker/internal/outline"
 	"github.com/bairea/mdwalker/internal/preview"
 	"github.com/bairea/mdwalker/internal/search"
-	"github.com/bairea/mdwalker/internal/watch"
 )
 
 type focus int
@@ -31,11 +28,12 @@ const (
 
 type Model struct {
 	cfg     config.Config
+	wl      config.WhitelistConfig
 	files   filelist.Model
 	preview preview.Model
 	outline outline.Model
 	search  search.Model
-	watcher *watch.Watcher
+	watcher *fileWatcher
 
 	root         string
 	focus        focus
@@ -45,14 +43,14 @@ type Model struct {
 	width        int
 	height       int
 	ready        bool
-	codeBlocks   []codeblock.Block
+	codeBlocks   []markdown.Block
 }
 
 type filesLoadedMsg struct {
 	entries []discover.FileEntry
 }
 
-type watchEventMsg watch.Event
+type watchEventMsg fileEvent
 
 type watchErrorMsg error
 
@@ -66,14 +64,16 @@ var (
 )
 
 func New(root string) *Model {
-	mermaid.CleanCache()
+	markdown.CleanMermaidCache()
 
 	cfg := config.Load()
+	wl := config.LoadWhitelist()
 	files := filelist.New()
 	files.ShowTime = cfg.ShowTime
 
 	return &Model{
 		cfg:     cfg,
+		wl:      wl,
 		files:   files,
 		preview: preview.New(),
 		outline: outline.New(),
@@ -94,7 +94,7 @@ func (m *Model) SetShowTime(v bool) {
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			entries, err := discover.Scan(m.root)
+			entries, err := discover.Scan(m.root, &m.wl)
 			if err != nil {
 				return err
 			}
@@ -105,7 +105,7 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) startWatcher() tea.Msg {
-	w, err := watch.New(m.root)
+	w, err := newFileWatcher(m.root, m.wl.Unignore.DotDirs)
 	if err != nil {
 		return watchErrorMsg(err)
 	}
@@ -162,7 +162,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			if m.watcher != nil {
-				m.watcher.Close()
+				m.watcher.close()
 			}
 			return m, tea.Quit
 
@@ -336,13 +336,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.history = m.history[:len(m.history)-1]
 				m.preview.LoadFile(m.root, prev)
 				m.outline.SetContent(m.preview.Content())
-				m.codeBlocks = codeblock.Extract(m.preview.Content())
+				m.codeBlocks = markdown.ExtractBlocks(m.preview.Content())
 				m.focus = focusPreview
 			}
 
 		case "r":
 			cmds = append(cmds, func() tea.Msg {
-				entries, err := discover.Scan(m.root)
+				entries, err := discover.Scan(m.root, &m.wl)
 				if err != nil {
 					return err
 				}
@@ -360,7 +360,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case watchEventMsg:
 		cmds = append(cmds, func() tea.Msg {
-			entries, _ := discover.Scan(m.root)
+			entries, _ := discover.Scan(m.root, &m.wl)
 			return filesLoadedMsg{entries}
 		})
 
@@ -433,24 +433,24 @@ func (m *Model) loadFileWithMedia(path string, recordHistory bool, renderMedia b
 		m.preview.LoadFileLight(m.root, path)
 	}
 	m.outline.SetContent(m.preview.Content())
-	m.codeBlocks = codeblock.Extract(m.preview.Content())
+	m.codeBlocks = markdown.ExtractBlocks(m.preview.Content())
 }
 
 func (m *Model) copyCurrentBlock() {
 	line := m.preview.CurrentLine()
-	block := codeblock.BlockAtLine(m.codeBlocks, line)
+	block := markdown.BlockAtLine(m.codeBlocks, line)
 	if block != nil {
-		codeblock.CopyToClipboard(block.Content)
+		markdown.CopyToClipboard(block.Content)
 	}
 }
 
 func (m *Model) openCurrentImage() {
 	line := m.preview.CurrentLine()
 	content := m.preview.Content()
-	refs := image.Extract(content)
+	refs := markdown.ExtractImages(content)
 	for _, ref := range refs {
 		if ref.Line == line {
-			image.OpenWithDefault(ref.Path)
+			markdown.OpenImage(ref.Path)
 			break
 		}
 	}

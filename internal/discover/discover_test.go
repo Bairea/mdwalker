@@ -14,7 +14,7 @@ func TestScanIncludesMarkdownAndPreviewableImages(t *testing.T) {
 		}
 	}
 
-	entries, err := Scan(root)
+	entries, err := Scan(root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
