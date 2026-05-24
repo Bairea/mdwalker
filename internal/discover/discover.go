@@ -52,6 +52,12 @@ func Scan(root string, wl *config.WhitelistConfig) ([]FileEntry, error) {
 	if wl != nil {
 		unignoreEntries := scanUnignoreDirs(root, wl)
 		entries = append(entries, unignoreEntries...)
+		for _, f := range wl.Unignore.Files {
+			fullPath := filepath.Join(root, f)
+			if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+				entries = append(entries, FileEntry{Path: f, ModTime: info.ModTime()})
+			}
+		}
 	}
 	entries = filterSkipSubdirs(entries, wl)
 	entries = dedupEntries(entries)

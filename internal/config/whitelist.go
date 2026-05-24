@@ -13,6 +13,7 @@ import (
 type WhitelistUnignore struct {
 	DotDirs []string `yaml:"dot_dirs"`
 	Paths   []string `yaml:"paths"`
+	Files   []string `yaml:"files"`
 }
 
 type WhitelistConfig struct {
@@ -32,6 +33,7 @@ func defaultWhitelist() WhitelistConfig {
 				".qoder", ".qwen", ".roo", ".vibe", ".windsurf", ".zencoder",
 			},
 			Paths: []string{"docs/superpowers"},
+			Files: []string{"AGENTS.md", "CLAUDE.md"},
 		},
 		SkipSubdirs: []string{"*/skills"},
 	}
@@ -52,9 +54,11 @@ func dedupStrings(v []string) []string {
 func mergeWhitelist(base, overlay WhitelistConfig) WhitelistConfig {
 	base.Unignore.DotDirs = append(base.Unignore.DotDirs, overlay.Unignore.DotDirs...)
 	base.Unignore.Paths = append(base.Unignore.Paths, overlay.Unignore.Paths...)
+	base.Unignore.Files = append(base.Unignore.Files, overlay.Unignore.Files...)
 	base.SkipSubdirs = append(base.SkipSubdirs, overlay.SkipSubdirs...)
 	base.Unignore.DotDirs = dedupStrings(base.Unignore.DotDirs)
 	base.Unignore.Paths = dedupStrings(base.Unignore.Paths)
+	base.Unignore.Files = dedupStrings(base.Unignore.Files)
 	base.SkipSubdirs = dedupStrings(base.SkipSubdirs)
 	return base
 }

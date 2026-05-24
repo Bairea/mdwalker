@@ -30,6 +30,19 @@ func TestLoadWhitelistDefaults(t *testing.T) {
 	if len(wl.SkipSubdirs) != 1 || wl.SkipSubdirs[0] != "*/skills" {
 		t.Errorf("expected default skip_subdirs [*/skills], got %v", wl.SkipSubdirs)
 	}
+
+	if len(wl.Unignore.Files) < 2 {
+		t.Errorf("expected at least 2 built-in files, got %d", len(wl.Unignore.Files))
+	}
+	foundAGENTS := false
+	for _, f := range wl.Unignore.Files {
+		if f == "AGENTS.md" {
+			foundAGENTS = true
+		}
+	}
+	if !foundAGENTS {
+		t.Error("expected AGENTS.md in default files")
+	}
 }
 
 func TestLoadWhitelistMergeProject(t *testing.T) {
@@ -42,6 +55,8 @@ unignore:
     - .mycustom
   paths:
     - docs/custom
+  files:
+    - CUSTOM.md
 skip_subdirs:
   - "*/custom"
 `
@@ -80,6 +95,17 @@ skip_subdirs:
 	}
 	if !foundCustom {
 		t.Error("expected */custom in skip_subdirs")
+	}
+
+	hasCustomFile := false
+	for _, f := range wl.Unignore.Files {
+		if f == "CUSTOM.md" {
+			hasCustomFile = true
+			break
+		}
+	}
+	if !hasCustomFile {
+		t.Error("expected CUSTOM.md from project-level whitelist")
 	}
 }
 
