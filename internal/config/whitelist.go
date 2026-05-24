@@ -1,6 +1,9 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -66,20 +69,27 @@ func loadYAMLWhitelist(path string) (WhitelistConfig, error) {
 	return wl, err
 }
 
+func tryLoadWhitelist(path string) WhitelistConfig {
+	wl, err := loadYAMLWhitelist(path)
+	if err == nil {
+		return wl
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintf(os.Stderr, "mdwalker: warning: failed to load %s: %v\n", path, err)
+	}
+	return WhitelistConfig{}
+}
+
 func LoadWhitelist() WhitelistConfig {
 	wl := defaultWhitelist()
 
 	home, err := os.UserHomeDir()
 	if err == nil {
 		globalPath := filepath.Join(home, ".config", "mdwalker", "whitelist.yaml")
-		if global, err := loadYAMLWhitelist(globalPath); err == nil {
-			wl = mergeWhitelist(wl, global)
-		}
+		wl = mergeWhitelist(wl, tryLoadWhitelist(globalPath))
 	}
 
-	if project, err := loadYAMLWhitelist("mdwalker-whitelist.yaml"); err == nil {
-		wl = mergeWhitelist(wl, project)
-	}
+	wl = mergeWhitelist(wl, tryLoadWhitelist("mdwalker-whitelist.yaml"))
 
 	return wl
 }
