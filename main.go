@@ -17,8 +17,11 @@ func main() {
 		root = args.Files[0]
 	}
 
+	m := app.New(root)
+	m.SetShowTime(args.ShowTime)
+
 	p := tea.NewProgram(
-		app.New(root),
+		m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)

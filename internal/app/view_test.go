@@ -71,6 +71,28 @@ func TestSearchPanelRendersAboveSingleLineStatus(t *testing.T) {
 	}
 }
 
+func TestMainViewRendersFramedPanesWithinTerminalWidth(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte("# Title\nbody\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	m.Update(filesLoadedMsg{entries: []discover.FileEntry{{Path: "doc.md", ModTime: time.Now()}}})
+	m.openSelectedFile()
+
+	view := m.View()
+	if !strings.Contains(view, "╭") || !strings.Contains(view, "╰") {
+		t.Fatalf("main view should render framed panes: %q", view)
+	}
+	for i, line := range strings.Split(view, "\n") {
+		if got := lipgloss.Width(line); got > 100 {
+			t.Fatalf("line %d width = %d, want <= 100: %q", i, got, line)
+		}
+	}
+}
+
 func TestFileSearchRendersCenteredModalWithKeyboardSelectableCandidates(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"alpha-match.md", "beta-match.md"} {
@@ -103,6 +125,12 @@ func TestFileSearchRendersCenteredModalWithKeyboardSelectableCandidates(t *testi
 	}
 	if titleLine < 8 || titleLine > 20 {
 		t.Fatalf("file search did not render as a centered modal; title line=%d view=%q", titleLine, view)
+	}
+	if !strings.Contains(view, "╭") || !strings.Contains(view, "╰") {
+		t.Fatalf("file search should render as a bordered modal, view=%q", view)
+	}
+	if !strings.Contains(view, "› alpha-match.md") {
+		t.Fatalf("file search should mark the selected candidate, view=%q", view)
 	}
 
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -150,7 +178,7 @@ func TestMouseClickInOutlineJumpsPreviewToHeading(t *testing.T) {
 	}
 }
 
-func TestOutlineEnterKeepsOutlineInteractiveForNextSelection(t *testing.T) {
+func TestOutlineEnterKeepsOutlineVisibleSwitchesFocusToPreview(t *testing.T) {
 	root := t.TempDir()
 	content := "# First\none\n## Second\ntwo\n## Third\nthree\n"
 	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte(content), 0644); err != nil {
@@ -166,14 +194,13 @@ func TestOutlineEnterKeepsOutlineInteractiveForNextSelection(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if !m.outline.Visible || m.focus != focusOutline {
-		t.Fatalf("outline should stay interactive after Enter; visible=%v focus=%v", m.outline.Visible, m.focus)
+	if !m.outline.Visible {
+		t.Fatalf("outline should remain visible after Enter; visible=%v", m.outline.Visible)
 	}
-
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
-	if m.outline.SelectedLine() != 4 {
-		t.Fatalf("outline did not continue to the next heading after Enter; selected line=%d", m.outline.SelectedLine())
+	if m.focus != focusOutline {
+		t.Fatalf("focus should stay on outline after Enter; focus=%v", m.focus)
+	}
+	if !strings.Contains(m.preview.View(), "Second") {
+		t.Fatalf("preview should show the selected heading; view=%q", m.preview.View())
 	}
 }

@@ -42,8 +42,20 @@ func Parse(content string) []Heading {
 	inFence := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
+		isFence := strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
+		if isFence {
+			if inFence {
+				fenceChar := "`"
+				if strings.HasPrefix(trimmed, "~~~") {
+					fenceChar = "~"
+				}
+				rest := strings.TrimLeft(trimmed, fenceChar)
+				if strings.TrimSpace(rest) == "" {
+					inFence = false
+				}
+			} else {
+				inFence = true
+			}
 			continue
 		}
 		if inFence {

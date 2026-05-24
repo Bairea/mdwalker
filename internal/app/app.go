@@ -56,12 +56,25 @@ type watchEventMsg watch.Event
 
 type watchErrorMsg error
 
+var (
+	activePaneStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62"))
+	inactivePaneStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240"))
+)
+
 func New(root string) *Model {
 	mermaid.CleanCache()
 
+	cfg := config.Load()
+	files := filelist.New()
+	files.ShowTime = cfg.ShowTime
+
 	return &Model{
-		cfg:     config.Load(),
-		files:   filelist.New(),
+		cfg:     cfg,
+		files:   files,
 		preview: preview.New(),
 		outline: outline.New(),
 		search:  search.New(),
@@ -72,6 +85,10 @@ func New(root string) *Model {
 func NewDefault() *Model {
 	root, _ := os.Getwd()
 	return New(root)
+}
+
+func (m *Model) SetShowTime(v bool) {
+	m.files.ShowTime = v
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -127,7 +144,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			if m.filesWidth > 0 && msg.X < m.filesWidth {
 				m.focus = focusFiles
-				if m.files.SelectVisibleRow(msg.Y) {
+				if m.files.SelectVisibleRow(msg.Y - 1) {
 					m.openSelectedFile()
 				}
 			} else if m.outline.Visible && m.outlineWidth > 0 && msg.X >= m.width-m.outlineWidth {
@@ -137,7 +154,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else {
 				m.focus = focusPreview
-				m.preview.SetCursorFromVisibleRow(msg.Y)
+				m.preview.SetCursorFromVisibleRow(msg.Y - 1)
 			}
 		}
 
@@ -244,6 +261,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.search.Active && m.search.Mode == search.ModeContent {
 				if len(m.search.Matches) > 0 {
 					m.preview.ScrollToLine(m.search.CurrentLine())
+					m.search.Deactivate()
 					m.focus = focusPreview
 				}
 				skipSearchInput = true
@@ -366,6 +384,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.search.Active && !skipSearchInput {
 		m.search, cmd = m.search.Update(msg)
 		m.search.UpdateSearch(m.files.Entries, m.preview.Content())
+		if m.search.Mode == search.ModeContent && len(m.search.Matches) > 0 {
+			m.preview.ScrollToLine(m.search.CurrentLine())
+		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -457,16 +478,11 @@ func (m *Model) layout() {
 	m.outlineWidth = outlineWidth
 
 	previewWidth := m.width - filesWidth - outlineWidth
-	if filesWidth > 0 {
-		previewWidth--
-	}
-	if outlineWidth > 0 {
-		previewWidth--
-	}
 	bodyHeight := m.height - 1
 
-	m.files.SetSize(filesWidth, bodyHeight)
-	m.preview.SetSize(previewWidth, bodyHeight)
+	m.files.SetSize(innerPaneWidth(filesWidth), innerPaneHeight(bodyHeight))
+	m.preview.SetSize(innerPaneWidth(previewWidth), innerPaneHeight(bodyHeight))
+	m.search.SetSize(m.width, bodyHeight)
 }
 
 func (m Model) View() string {
@@ -477,6 +493,13 @@ func (m Model) View() string {
 	filesView := m.files.View()
 	previewView := m.preview.View()
 	outlineView := m.outline.View()
+	if m.filesWidth > 0 {
+		filesView = renderPane(filesView, m.filesWidth, m.height-1, m.focus == focusFiles)
+	}
+	previewWidth := m.width - m.filesWidth - m.outlineWidth
+	if previewWidth > 0 {
+		previewView = renderPane(previewView, previewWidth, m.height-1, m.focus == focusPreview)
+	}
 
 	var mainView string
 	if m.filesWidth > 0 && m.outlineWidth > 0 && outlineView != "" {
@@ -610,6 +633,59 @@ func overlayCentered(base, panel string, width, height int) string {
 		baseLines[target] = strings.Repeat(" ", left) + line + strings.Repeat(" ", right)
 	}
 	return strings.Join(baseLines, "\n")
+}
+
+func renderPane(content string, width, height int, focused bool) string {
+	if width <= 1 || height <= 1 {
+		return ""
+	}
+	innerWidth := innerPaneWidth(width)
+	innerHeight := innerPaneHeight(height)
+	content = fitBlock(content, innerWidth, innerHeight)
+	style := inactivePaneStyle
+	if focused {
+		style = activePaneStyle
+	}
+	return style.Width(innerWidth).Render(content)
+}
+
+func innerPaneWidth(width int) int {
+	if width <= 2 {
+		return 0
+	}
+	return width - 2
+}
+
+func innerPaneHeight(height int) int {
+	if height <= 2 {
+		return 0
+	}
+	return height - 2
+}
+
+func fitBlock(content string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for i, line := range lines {
+		lines[i] = padLine(truncateWidth(line, width), width)
+	}
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func padLine(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
 }
 
 func (m *Model) moveFocusLeft() {

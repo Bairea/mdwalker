@@ -26,6 +26,8 @@ type Model struct {
 	Current     int
 	FileMatches []FileMatch
 	FileCurrent int
+	width       int
+	height      int
 }
 
 type Match struct {
@@ -39,7 +41,6 @@ type FileMatch struct {
 }
 
 var (
-	barStyle   = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	countStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 )
 
@@ -89,6 +90,19 @@ func (m *Model) Deactivate() {
 	m.FileMatches = nil
 	m.Current = 0
 	m.FileCurrent = 0
+}
+
+func (m *Model) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+	if width <= 0 {
+		m.input.Width = 20
+		return
+	}
+	m.input.Width = modalContentWidth(width) - 2
+	if m.input.Width < 12 {
+		m.input.Width = 12
+	}
 }
 
 func (m *Model) Search(content string) {
@@ -190,37 +204,81 @@ func (m Model) View() string {
 	if !m.Active {
 		return ""
 	}
-	modeLabel := countStyle.Render("[content]")
+	panelWidth := modalPanelInnerWidth(m.width)
+	contentWidth := panelWidth - 4
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	modeLabel := "content"
 	title := "Search content"
 	if m.Mode == ModeFileName {
-		modeLabel = countStyle.Render("[files]")
+		modeLabel = "files"
 		title = "Search files"
 	}
 	count := ""
 	if m.Mode == ModeContent && len(m.Matches) > 0 {
-		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.Current+1, len(m.Matches)))
+		count = fmt.Sprintf("%d/%d", m.Current+1, len(m.Matches))
 	} else if m.Mode == ModeFileName && len(m.FileMatches) > 0 {
-		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.FileCurrent+1, len(m.FileMatches)))
+		count = fmt.Sprintf("%d/%d", m.FileCurrent+1, len(m.FileMatches))
 	}
-	header := barStyle.Render(" " + title + "\n /" + m.input.View() + " " + modeLabel + count + " Tab:switch Esc:cancel")
-	if m.Mode != ModeFileName || len(m.FileMatches) == 0 {
-		return header
+	meta := modeLabel
+	if count != "" {
+		meta += " · " + count
 	}
+	header := renderAlignedLine(title, meta, contentWidth)
+	prompt := inputLineStyle.Render(padRight(truncateCells("/"+m.input.View(), contentWidth), contentWidth))
+	help := countStyle.Render("Tab switch  Enter open  Esc cancel")
 
 	var b strings.Builder
 	b.WriteString(header)
-	for i, match := range m.FileMatches {
-		if i >= 8 {
-			break
+	b.WriteString("\n")
+	b.WriteString(prompt)
+	b.WriteString("\n")
+	b.WriteString(help)
+
+	if m.Mode == ModeFileName && len(m.FileMatches) > 0 {
+		for i, match := range m.FileMatches {
+			if i >= 8 {
+				break
+			}
+			prefix := "  "
+			if i == m.FileCurrent {
+				prefix = "› "
+			}
+			line := padRight(prefix+truncateCells(match.Entry.Path, contentWidth-2), contentWidth)
+			if i == m.FileCurrent {
+				line = selectedCandidateStyle.Render(line)
+			}
+			b.WriteString("\n")
+			b.WriteString(line)
 		}
-		line := "  " + match.Entry.Path
-		if i == m.FileCurrent {
-			line = selectedCandidateStyle.Render(line)
-		}
-		b.WriteString("\n")
-		b.WriteString(line)
 	}
-	return b.String()
+
+	if m.Mode == ModeContent && len(m.Matches) > 0 {
+		b.WriteString("\n")
+		b.WriteString(countStyle.Render(strings.Repeat("─", contentWidth)))
+		for i, match := range m.Matches {
+			if i >= 8 {
+				b.WriteString("\n")
+				b.WriteString(countStyle.Render(fmt.Sprintf("  ... %d more matches", len(m.Matches)-8)))
+				break
+			}
+			prefix := "  "
+			if i == m.Current {
+				prefix = "› "
+			}
+			text := strings.TrimSpace(match.Text)
+			line := padRight(prefix+truncateCells(fmt.Sprintf("L%d %s", match.Line+1, text), contentWidth-2), contentWidth)
+			if i == m.Current {
+				line = selectedCandidateStyle.Render(line)
+			}
+			b.WriteString("\n")
+			b.WriteString(line)
+		}
+	}
+
+	return searchPanelStyle.Width(panelWidth).Render(b.String())
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -233,3 +291,87 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 var selectedCandidateStyle = lipgloss.NewStyle().
 	Background(lipgloss.Color("62")).
 	Foreground(lipgloss.Color("255"))
+
+var (
+	searchPanelStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("62")).
+				Padding(1, 2).
+				Background(lipgloss.Color("235"))
+	inputLineStyle = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+)
+
+func modalContentWidth(width int) int {
+	w := modalPanelInnerWidth(width) - 4
+	if w < 20 {
+		return 20
+	}
+	return w
+}
+
+func modalPanelInnerWidth(width int) int {
+	if width <= 0 {
+		return 54
+	}
+	w := width * 70 / 100
+	if w < 44 {
+		w = 44
+	}
+	if w > 72 {
+		w = 72
+	}
+	if w > width-4 {
+		w = width - 4
+	}
+	if w < 24 {
+		w = 24
+	}
+	return w - 2
+}
+
+func renderAlignedLine(left, right string, width int) string {
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(right)
+	if leftWidth+rightWidth >= width {
+		maxLeft := width - rightWidth - 1
+		if maxLeft < 1 {
+			maxLeft = width
+		}
+		left = truncateCells(left, maxLeft)
+		leftWidth = lipgloss.Width(left)
+	}
+	padding := width - leftWidth - rightWidth
+	if padding < 1 {
+		padding = 1
+	}
+	return left + strings.Repeat(" ", padding) + right
+}
+
+func truncateCells(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	if width <= 1 {
+		return "…"
+	}
+	var b strings.Builder
+	for _, r := range s {
+		next := b.String() + string(r)
+		if lipgloss.Width(next)+1 > width {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
+}
+
+func padRight(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}

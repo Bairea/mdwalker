@@ -6,20 +6,23 @@ import (
 )
 
 type Args struct {
-	Root    string
-	Files   []string
-	NoWatch bool
-	Mermaid string
+	Root     string
+	Files    []string
+	NoWatch  bool
+	Mermaid  string
+	ShowTime bool
 }
 
 func Parse() Args {
 	var a Args
 	noWatch := flag.Bool("no-watch", false, "disable file watching")
 	mermaid := flag.String("mermaid", "auto", "mermaid mode: auto, code, browser")
+	showTime := flag.Bool("show-time", false, "show file modification times in file list")
 	flag.Parse()
 
 	a.NoWatch = *noWatch
 	a.Mermaid = *mermaid
+	a.ShowTime = *showTime
 
 	positional := flag.Args()
 	if len(positional) == 0 {

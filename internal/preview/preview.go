@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,8 +96,20 @@ func (m *Model) parseHeadings() {
 	inFence := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
+		isFence := strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
+		if isFence {
+			if inFence {
+				fenceChar := "`"
+				if strings.HasPrefix(trimmed, "~~~") {
+					fenceChar = "~"
+				}
+				rest := strings.TrimLeft(trimmed, fenceChar)
+				if strings.TrimSpace(rest) == "" {
+					inFence = false
+				}
+			} else {
+				inFence = true
+			}
 			continue
 		}
 		if inFence {
@@ -200,12 +213,27 @@ func (m *Model) renderFolded() {
 		}
 	}
 	filtered := strings.Join(visible, "\n")
-	filtered = m.transformPreviewMarkdown(filtered)
-	rendered, err := m.renderer.Render(filtered)
+	markdown, blocks := m.extractMediaBlocks(filtered)
+	rendered, err := m.renderer.Render(markdown)
 	if err != nil {
 		m.rendered = filtered
 		m.viewport.SetContent(filtered)
 		return
+	}
+	for _, b := range blocks {
+		lines := strings.Split(rendered, "\n")
+		for i, line := range lines {
+			if strings.Contains(line, b.placeholder) {
+				outputLines := strings.Split(strings.Trim(b.output, "\n"), "\n")
+				newLines := make([]string, 0, len(lines)+len(outputLines))
+				newLines = append(newLines, lines[:i]...)
+				newLines = append(newLines, outputLines...)
+				newLines = append(newLines, lines[i+1:]...)
+				lines = newLines
+				break
+			}
+		}
+		rendered = strings.Join(lines, "\n")
 	}
 	m.rendered = rendered
 	m.viewport.SetContent(rendered)
@@ -229,49 +257,52 @@ func (m *Model) ScrollToLine(line int) {
 func (m Model) renderedOffsetForLine(line int) int {
 	sourceLines := strings.Split(m.content, "\n")
 	if line < 0 || line >= len(sourceLines) {
+		return 0
+	}
+
+	fullLine := strings.TrimSpace(sourceLines[line])
+	if fullLine == "" {
 		return line
 	}
 
-	candidates := targetLineCandidates(sourceLines[line])
-	if len(candidates) == 0 {
-		return line
-	}
+	headingText := strings.TrimSpace(strings.TrimLeft(fullLine, "#"))
 
 	renderedLines := strings.Split(m.rendered, "\n")
-	start := line - 5
-	if start < 0 {
-		start = 0
-	}
-	if idx := findRenderedLine(renderedLines[start:], candidates); idx >= 0 {
-		return start + idx
-	}
-	if idx := findRenderedLine(renderedLines, candidates); idx >= 0 {
-		return idx
-	}
-	return line
-}
 
-func targetLineCandidates(line string) []string {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return nil
-	}
-	candidates := []string{trimmed}
-	if strings.HasPrefix(trimmed, "#") {
-		candidates = append(candidates, strings.TrimSpace(strings.TrimLeft(trimmed, "#")))
-	}
-	return candidates
-}
-
-func findRenderedLine(lines []string, candidates []string) int {
-	for i, line := range lines {
-		for _, candidate := range candidates {
-			if candidate != "" && strings.Contains(line, candidate) {
+	searchFrom := func(text string, start int) int {
+		if start >= len(renderedLines) {
+			start = len(renderedLines) - 1
+		}
+		if start < 0 {
+			start = 0
+		}
+		for i := start; i < len(renderedLines); i++ {
+			if text != "" && strings.Contains(renderedLines[i], text) {
 				return i
 			}
 		}
+		for i := 0; i < start; i++ {
+			if text != "" && strings.Contains(renderedLines[i], text) {
+				return i
+			}
+		}
+		return -1
 	}
-	return -1
+
+	approxStart := line - 5
+	if approxStart < 0 {
+		approxStart = 0
+	}
+
+	if idx := searchFrom(fullLine, approxStart); idx >= 0 {
+		return idx
+	}
+	if headingText != fullLine {
+		if idx := searchFrom(headingText, approxStart); idx >= 0 {
+			return idx
+		}
+	}
+	return line
 }
 
 func (m *Model) SetCursorFromVisibleRow(row int) {
@@ -321,44 +352,21 @@ func isImagePath(path string) bool {
 	}
 }
 
-func (m Model) transformPreviewMarkdown(content string) string {
-	content = m.replaceMermaidFences(content)
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		refs := mdimage.Extract(line)
-		if len(refs) == 0 {
-			continue
-		}
-		placeholders := make([]string, 0, len(refs))
-		for _, ref := range refs {
-			resolved := m.resolveAssetPath(ref.Path)
-			placeholders = append(placeholders, m.renderImage(resolved, ref.Path))
-		}
-		lines[i] = strings.Join(placeholders, " ")
-	}
-	return strings.Join(lines, "\n")
+type mediaBlock struct {
+	placeholder string
+	output      string
 }
 
-func (m Model) resolveAssetPath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	baseDir := filepath.Dir(filepath.Join(m.root, m.filePath))
-	return filepath.Clean(filepath.Join(baseDir, path))
+var mediaCounter int
+
+func (m Model) extractMediaBlocks(content string) (string, []mediaBlock) {
+	var blocks []mediaBlock
+	content = m.replaceMermaidWithPlaceholders(content, &blocks)
+	content = m.replaceImagesWithPlaceholders(content, &blocks)
+	return content, blocks
 }
 
-func (m Model) renderImage(fullPath, displayPath string) string {
-	if !m.renderMedia {
-		return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
-	}
-	rendered, err := mdimage.ToHalfblock(fullPath)
-	if err == nil && strings.TrimSpace(rendered) != "" {
-		return rendered
-	}
-	return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
-}
-
-func (m Model) replaceMermaidFences(content string) string {
+func (m Model) replaceMermaidWithPlaceholders(content string, blocks *[]mediaBlock) string {
 	lines := strings.Split(content, "\n")
 	out := make([]string, 0, len(lines))
 	var block []string
@@ -373,7 +381,11 @@ func (m Model) replaceMermaidFences(content string) string {
 		}
 		if inMermaid {
 			if strings.HasPrefix(trimmed, "```") {
-				out = append(out, m.renderMermaidBlock(strings.Join(block, "\n")))
+				output := m.renderMermaidBlock(strings.Join(block, "\n"))
+				mediaCounter++
+				key := fmt.Sprintf("%%MDWALKER_MERMAID_%d%%", mediaCounter)
+				*blocks = append(*blocks, mediaBlock{key, output})
+				out = append(out, key)
 				inMermaid = false
 				continue
 			}
@@ -383,9 +395,34 @@ func (m Model) replaceMermaidFences(content string) string {
 		out = append(out, line)
 	}
 	if inMermaid {
-		out = append(out, m.renderMermaidBlock(strings.Join(block, "\n")))
+		output := m.renderMermaidBlock(strings.Join(block, "\n"))
+		mediaCounter++
+		key := fmt.Sprintf("%%MDWALKER_MERMAID_%d%%", mediaCounter)
+		*blocks = append(*blocks, mediaBlock{key, output})
+		out = append(out, key)
 	}
 	return strings.Join(out, "\n")
+}
+
+func (m Model) replaceImagesWithPlaceholders(content string, blocks *[]mediaBlock) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		refs := mdimage.Extract(line)
+		if len(refs) == 0 {
+			continue
+		}
+		placeholders := make([]string, 0, len(refs))
+		for _, ref := range refs {
+			resolved := m.resolveAssetPath(ref.Path)
+			output := m.renderImage(resolved, ref.Path)
+			mediaCounter++
+			placeholder := fmt.Sprintf("%%MDWALKER_IMG_%d%%", mediaCounter)
+			*blocks = append(*blocks, mediaBlock{placeholder, output})
+			placeholders = append(placeholders, placeholder)
+		}
+		lines[i] = strings.Join(placeholders, " ")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderMermaidBlock(content string) string {
@@ -396,9 +433,64 @@ func (m Model) renderMermaidBlock(content string) string {
 	if err != nil {
 		return "[Mermaid: render unavailable: " + err.Error() + "]"
 	}
-	rendered, err := mdimage.ToHalfblock(path)
+	w, h := m.mediaWidth(), m.mediaHeight()
+	if mdimage.TerminalSupportsImages() {
+		rendered := mdimage.RenderInline(path, w, h)
+		if strings.TrimSpace(rendered) != "" {
+			return "\n" + rendered + "\n"
+		}
+	}
+	rendered, err := mdimage.ToHalfblock(path, w, h)
 	if err == nil && strings.TrimSpace(rendered) != "" {
-		return rendered
+		return "\n" + rendered + "\n"
 	}
 	return "[Mermaid: " + path + "]"
+}
+
+func (m Model) resolveAssetPath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	baseDir := filepath.Dir(filepath.Join(m.root, m.filePath))
+	return filepath.Clean(filepath.Join(baseDir, path))
+}
+
+func (m Model) renderImage(fullPath, displayPath string) string {
+	if !m.renderMedia {
+		return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
+	}
+	w, h := m.mediaWidth(), m.mediaHeight()
+	if mdimage.TerminalSupportsImages() {
+		rendered := mdimage.RenderInline(fullPath, w, h)
+		if strings.TrimSpace(rendered) != "" {
+			return "\n" + rendered + "\n"
+		}
+	}
+	rendered, err := mdimage.ToHalfblock(fullPath, w, h)
+	if err == nil && strings.TrimSpace(rendered) != "" {
+		return "\n" + rendered + "\n"
+	}
+	return mdimage.RenderPlaceholder(mdimage.ImageRef{Path: displayPath})
+}
+
+func (m Model) mediaWidth() int {
+	width := m.width - 2
+	if width <= 0 {
+		return 80
+	}
+	if width > 120 {
+		return 120
+	}
+	return width
+}
+
+func (m Model) mediaHeight() int {
+	height := m.height - 2
+	if height <= 0 {
+		return 20
+	}
+	if height > 30 {
+		return 30
+	}
+	return height
 }

@@ -44,7 +44,7 @@ func TestMouseClickInFilePaneOpensClickedFile(t *testing.T) {
 
 	m.Update(tea.MouseMsg{
 		X:      1,
-		Y:      1,
+		Y:      2,
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
 	})
@@ -166,7 +166,7 @@ func TestClickPreviewHeadingThenSpaceFoldsThatHeadingOnly(t *testing.T) {
 
 	m.Update(tea.MouseMsg{
 		X:      m.filesWidth + 2,
-		Y:      5,
+		Y:      6,
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
 	})

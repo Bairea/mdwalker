@@ -187,6 +187,65 @@ func TestScrollToLinePlacesRenderedHeadingAtTop(t *testing.T) {
 	}
 }
 
+func TestScrollToLineUsesRenderedOffsetNotSourceLineApproximation(t *testing.T) {
+	root := t.TempDir()
+	var b strings.Builder
+	b.WriteString("# Top\n\n")
+	for i := 0; i < 8; i++ {
+		b.WriteString("- list item before target\n")
+		b.WriteString("  - nested item before target\n")
+	}
+	targetLine := strings.Count(b.String(), "\n")
+	b.WriteString("## Precise Target\n")
+	b.WriteString("body that should not be the first visible line\n")
+	for i := 0; i < 8; i++ {
+		b.WriteString("after target filler\n\n")
+	}
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte(b.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New()
+	m.SetSize(80, 8)
+	if err := m.LoadFile(root, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	m.ScrollToLine(targetLine)
+
+	firstLine := strings.Split(m.View(), "\n")[0]
+	if !strings.Contains(firstLine, "Precise Target") {
+		t.Fatalf("ScrollToLine first visible line = %q, want target heading; view=%q", firstLine, m.View())
+	}
+	if strings.Contains(firstLine, "body that should not") {
+		t.Fatalf("ScrollToLine skipped past target heading: %q", m.View())
+	}
+}
+
+func TestPreviewImageRendererUsesViewportBoundedSize(t *testing.T) {
+	root := t.TempDir()
+	imagePath := filepath.Join(root, "diagram.png")
+	if err := os.WriteFile(imagePath, []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "chafa.log")
+	installFakeChafa(t, root, logPath)
+
+	m := New()
+	m.SetSize(42, 12)
+	if err := m.LoadFile(root, "diagram.png"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "IMAGE_RENDER:") {
+		t.Fatalf("image file did not render through terminal image renderer: %q", view)
+	}
+	if got := strings.TrimSpace(readFile(t, logPath)); got != imagePath {
+		t.Fatalf("image renderer received path %q, want %q", got, imagePath)
+	}
+}
+
 func installFakeChafa(t *testing.T, dir, logPath string) {
 	t.Helper()
 	writeExecutable(t, filepath.Join(dir, "chafa"), `#!/bin/sh
