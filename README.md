@@ -18,9 +18,37 @@ AI agent 输出物专用终端 Markdown 工作台 — 在终端中快速浏览�
 
 ## 安装
 
+### macOS
+
+```bash
+# Homebrew
+brew tap bairea/tap
+brew install mdwalker
+
+# 或者 go install
+go install github.com/bairea/mdwalker@latest
+```
+
+### Linux
+
 ```bash
 go install github.com/bairea/mdwalker@latest
 ```
+
+或者从 [GitHub Releases](https://github.com/Bairea/mdwalker/releases/latest) 下载对应架构的 tar.gz。
+
+### Windows
+
+```bash
+# Scoop
+scoop bucket add bairea https://github.com/Bairea/scoop-bucket
+scoop install mdwalker
+
+# 或者 go install
+go install github.com/bairea/mdwalker@latest
+```
+
+也可以从 [GitHub Releases](https://github.com/Bairea/mdwalker/releases/latest) 下载 zip 解压后直接运行。
 
 ### 可选增强
 

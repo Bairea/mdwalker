@@ -28,6 +28,24 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - repository:
+      owner: Bairea
+      name: homebrew-tap
+    homepage: "https://github.com/Bairea/mdwalker"
+    description: "AI agent 输出物专用终端 Markdown 工作台"
+    license: "MIT"
+    install: |
+      bin.install "mdwalker"
+
+scoops:
+  - repository:
+      owner: Bairea
+      name: scoop-bucket
+    homepage: "https://github.com/Bairea/mdwalker"
+    description: "AI agent 输出物专用终端 Markdown 工作台"
+    license: "MIT"
+
 changelog:
   sort: asc
   filters:
