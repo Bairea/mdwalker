@@ -25,7 +25,7 @@ var (
 			BorderForeground(lipgloss.Color("62")).
 			Padding(0, 1)
 	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("62"))
-	levelStyles = map[int]lipgloss.Style{
+	levelStyles   = map[int]lipgloss.Style{
 		1: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226")),
 		2: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117")),
 		3: lipgloss.NewStyle().Foreground(lipgloss.Color("110")),
@@ -39,7 +39,16 @@ func New() Model {
 func Parse(content string) []Heading {
 	var headings []Heading
 	lines := strings.Split(content, "\n")
+	inFence := false
 	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		if strings.HasPrefix(line, "#") {
 			level := 0
 			for _, c := range line {
@@ -82,6 +91,15 @@ func (m *Model) MoveDown() {
 	if m.Cursor < len(m.Headings)-1 {
 		m.Cursor++
 	}
+}
+
+func (m *Model) SelectVisibleRow(row int) bool {
+	idx := row - 3
+	if idx < 0 || idx >= len(m.Headings) {
+		return false
+	}
+	m.Cursor = idx
+	return true
 }
 
 func (m Model) SelectedLine() int {

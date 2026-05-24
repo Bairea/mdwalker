@@ -30,6 +30,14 @@ var priorityFiles = map[string]int{
 
 var priorityDirs = []string{".ai", ".claude", ".codex"}
 var secondaryDirs = []string{"docs", "notes", "reports"}
+var previewableExts = map[string]bool{
+	".md":   true,
+	".png":  true,
+	".jpg":  true,
+	".jpeg": true,
+	".gif":  true,
+	".webp": true,
+}
 
 func Scan(root string) ([]FileEntry, error) {
 	entries, err := scanWithFD(root)
@@ -48,7 +56,8 @@ func scanWithFD(root string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("fd", "--type", "f", "--extension", "md", "--search-path", root)
+	args := []string{"--type", "f", "--extension", "md", "--extension", "png", "--extension", "jpg", "--extension", "jpeg", "--extension", "gif", "--extension", "webp", "--search-path", root}
+	cmd := exec.Command("fd", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -84,7 +93,7 @@ func scanNative(root string) ([]FileEntry, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(d.Name(), ".md") {
+		if isPreviewableFile(d.Name()) {
 			info, _ := d.Info()
 			rel, _ := filepath.Rel(root, path)
 			entries = append(entries, FileEntry{
@@ -95,6 +104,10 @@ func scanNative(root string) ([]FileEntry, error) {
 		return nil
 	})
 	return entries, err
+}
+
+func isPreviewableFile(name string) bool {
+	return previewableExts[strings.ToLower(filepath.Ext(name))]
 }
 
 func sortEntries(entries []FileEntry) {

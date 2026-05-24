@@ -37,14 +37,15 @@ type Model struct {
 	search  search.Model
 	watcher *watch.Watcher
 
-	root       string
-	focus      focus
-	history    []string
-	filesWidth int
-	width      int
-	height     int
-	ready      bool
-	codeBlocks []codeblock.Block
+	root         string
+	focus        focus
+	history      []string
+	filesWidth   int
+	outlineWidth int
+	width        int
+	height       int
+	ready        bool
+	codeBlocks   []codeblock.Block
 }
 
 type filesLoadedMsg struct {
@@ -111,6 +112,7 @@ func (m *Model) listenWatch() tea.Msg {
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	skipSearchInput := false
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -125,8 +127,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			if m.filesWidth > 0 && msg.X < m.filesWidth {
 				m.focus = focusFiles
+				if m.files.SelectVisibleRow(msg.Y) {
+					m.openSelectedFile()
+				}
+			} else if m.outline.Visible && m.outlineWidth > 0 && msg.X >= m.width-m.outlineWidth {
+				m.focus = focusOutline
+				if m.outline.SelectVisibleRow(msg.Y) {
+					m.preview.ScrollToLine(m.outline.SelectedLine())
+				}
 			} else {
 				m.focus = focusPreview
+				m.preview.SetCursorFromVisibleRow(msg.Y)
 			}
 		}
 
@@ -140,8 +151,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "tab":
 			if m.search.Active {
-				m.search.ToggleMode()
-				m.search.UpdateSearch(m.files.Entries, m.preview.Content())
+				if m.search.Mode == search.ModeFileName {
+					idx := m.search.CurrentFileIndex()
+					if idx >= 0 && idx < len(m.files.Entries) {
+						m.openFile(m.files.Entries[idx].Path)
+						m.search.Activate(search.ModeContent)
+						m.focus = focusSearch
+					}
+				} else {
+					m.search.ToggleMode()
+					m.search.UpdateSearch(m.files.Entries, m.preview.Content())
+				}
+				skipSearchInput = true
 			} else if m.outline.Visible {
 				m.focus = (m.focus + 1) % 3
 			} else {
@@ -175,11 +196,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.focus = focusPreview
 			}
+			m.layout()
 
 		case "j", "down":
+			if m.search.Active {
+				m.search.Next()
+				skipSearchInput = true
+				break
+			}
 			switch m.focus {
 			case focusFiles:
 				m.files.MoveDown()
+				m.previewSelectedFile()
 			case focusPreview:
 				m.preview.ScrollDown()
 			case focusOutline:
@@ -187,9 +215,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "k", "up":
+			if m.search.Active {
+				m.search.Prev()
+				skipSearchInput = true
+				break
+			}
 			switch m.focus {
 			case focusFiles:
 				m.files.MoveUp()
+				m.previewSelectedFile()
 			case focusPreview:
 				m.preview.ScrollUp()
 			case focusOutline:
@@ -200,17 +234,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.search.Active && m.search.Mode == search.ModeFileName {
 				idx := m.search.CurrentFileIndex()
 				if idx >= 0 && idx < len(m.files.Entries) {
-					path := m.files.Entries[idx].Path
-					currentPath := m.preview.FilePath()
-					if currentPath != "" && currentPath != path {
-						m.history = append(m.history, currentPath)
-					}
-					m.preview.LoadFile(m.root, path)
-					m.outline.SetContent(m.preview.Content())
-					m.codeBlocks = codeblock.Extract(m.preview.Content())
+					m.openFile(m.files.Entries[idx].Path)
 					m.search.Deactivate()
 					m.focus = focusPreview
 				}
+				skipSearchInput = true
+				break
+			}
+			if m.search.Active && m.search.Mode == search.ModeContent {
+				if len(m.search.Matches) > 0 {
+					m.preview.ScrollToLine(m.search.CurrentLine())
+					m.focus = focusPreview
+				}
+				skipSearchInput = true
 				break
 			}
 			switch m.focus {
@@ -219,7 +255,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case focusOutline:
 				line := m.outline.SelectedLine()
 				m.preview.ScrollToLine(line)
-				m.focus = focusPreview
 			}
 
 		case "/":
@@ -229,15 +264,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.search.Activate(search.ModeContent)
 			}
 			m.focus = focusSearch
+			skipSearchInput = true
 
 		case "esc":
 			if m.search.Active {
 				m.search.Deactivate()
 				m.focus = focusPreview
+				skipSearchInput = true
 			}
 			if m.outline.Visible {
 				m.outline.Toggle()
 				m.focus = focusPreview
+				m.layout()
 			}
 
 		case "n":
@@ -325,7 +363,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	if m.search.Active {
+	if m.search.Active && !skipSearchInput {
 		m.search, cmd = m.search.Update(msg)
 		m.search.UpdateSearch(m.files.Entries, m.preview.Content())
 		if cmd != nil {
@@ -343,14 +381,38 @@ func (m *Model) openSelectedFile() {
 	if path == "" {
 		return
 	}
+	m.loadFile(path, true)
+	m.focus = focusPreview
+}
+
+func (m *Model) openFile(path string) {
+	m.loadFile(path, true)
+}
+
+func (m *Model) previewSelectedFile() {
+	path := m.files.SelectedFile()
+	if path == "" {
+		return
+	}
+	m.loadFileWithMedia(path, false, false)
+}
+
+func (m *Model) loadFile(path string, recordHistory bool) {
+	m.loadFileWithMedia(path, recordHistory, true)
+}
+
+func (m *Model) loadFileWithMedia(path string, recordHistory bool, renderMedia bool) {
 	currentPath := m.preview.FilePath()
-	if currentPath != "" && currentPath != path {
+	if recordHistory && currentPath != "" && currentPath != path {
 		m.history = append(m.history, currentPath)
 	}
-	m.preview.LoadFile(m.root, path)
+	if renderMedia {
+		m.preview.LoadFile(m.root, path)
+	} else {
+		m.preview.LoadFileLight(m.root, path)
+	}
 	m.outline.SetContent(m.preview.Content())
 	m.codeBlocks = codeblock.Extract(m.preview.Content())
-	m.focus = focusPreview
 }
 
 func (m *Model) copyCurrentBlock() {
@@ -379,8 +441,26 @@ func (m *Model) layout() {
 		filesWidth = 0
 	}
 	m.filesWidth = filesWidth
-	previewWidth := m.width - filesWidth
+	outlineWidth := 0
+	if m.outline.Visible {
+		outlineWidth = m.width * 25 / 100
+		if outlineWidth < 24 {
+			outlineWidth = 24
+		}
+		if outlineWidth > 36 {
+			outlineWidth = 36
+		}
+		if m.width-filesWidth-outlineWidth < 30 {
+			outlineWidth = 0
+		}
+	}
+	m.outlineWidth = outlineWidth
+
+	previewWidth := m.width - filesWidth - outlineWidth
 	if filesWidth > 0 {
+		previewWidth--
+	}
+	if outlineWidth > 0 {
 		previewWidth--
 	}
 	bodyHeight := m.height - 1
@@ -396,44 +476,34 @@ func (m Model) View() string {
 
 	filesView := m.files.View()
 	previewView := m.preview.View()
-
 	outlineView := m.outline.View()
-	if outlineView != "" && m.filesWidth > 0 {
-		outlineWidth := lipgloss.Width(outlineView)
-		// Only overlay if outline fits within preview area
-		previewWidth := m.width - m.filesWidth - 1
-		if outlineWidth < previewWidth {
-			previewLines := strings.Split(previewView, "\n")
-			outlineLines := strings.Split(outlineView, "\n")
-			for i := 0; i < len(outlineLines) && i < len(previewLines); i++ {
-				ol := outlineLines[i]
-				pl := previewLines[i]
-				plWidth := lipgloss.Width(pl)
-				// Right-align the preview line then overlay outline on right
-				spaceForPreview := previewWidth - outlineWidth
-				if plWidth > spaceForPreview {
-					pl = pl[:spaceForPreview]
-					plWidth = spaceForPreview
-				}
-				padding := spaceForPreview - plWidth
-				if padding < 0 {
-					padding = 0
-				}
-				previewLines[i] = pl + strings.Repeat(" ", padding) + ol
-			}
-			previewView = strings.Join(previewLines, "\n")
-		}
-	}
 
 	var mainView string
-	if m.filesWidth > 0 {
+	if m.filesWidth > 0 && m.outlineWidth > 0 && outlineView != "" {
+		mainView = lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			filesView,
+			previewView,
+			outlineView,
+		)
+	} else if m.filesWidth > 0 {
 		mainView = lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			filesView,
 			previewView,
 		)
+	} else if m.outlineWidth > 0 && outlineView != "" {
+		mainView = lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			previewView,
+			outlineView,
+		)
 	} else {
 		mainView = previewView
+	}
+
+	if m.search.Active {
+		mainView = overlayCentered(mainView, m.search.View(), m.width, m.height-1)
 	}
 
 	statusBar := m.renderStatusBar()
@@ -445,17 +515,27 @@ func (m Model) renderStatusBar() string {
 		Background(lipgloss.Color("236")).
 		Width(m.width)
 
-	left := fmt.Sprintf(" mdwalker | %s ", m.root)
+	left := fmt.Sprintf(" mdwalker | focus:%s | %s ", m.focusName(), m.root)
 	if m.watcher != nil {
 		left += "● watch "
 	}
 
 	var right string
 	if m.search.Active {
-		right = m.search.View()
+		mode := "content"
+		if m.search.Mode == search.ModeFileName {
+			mode = "files"
+		}
+		right = fmt.Sprintf(" search:%s  Enter:open  Tab:select  Esc:cancel ", mode)
 	} else {
 		right = " q:quit  o:outline  /:search  r:rescan "
 	}
+
+	maxLeft := m.width - lipgloss.Width(right)
+	if maxLeft < 0 {
+		maxLeft = 0
+	}
+	left = truncateWidth(left, maxLeft)
 
 	used := lipgloss.Width(left) + lipgloss.Width(right)
 	padding := m.width - used
@@ -465,6 +545,73 @@ func (m Model) renderStatusBar() string {
 
 	return bar.Render(left + strings.Repeat(" ", padding) + right)
 }
+
+func (m Model) focusName() string {
+	switch m.focus {
+	case focusFiles:
+		return "files"
+	case focusPreview:
+		return "preview"
+	case focusOutline:
+		return "outline"
+	case focusSearch:
+		return "search"
+	default:
+		return "unknown"
+	}
+}
+
+func truncateWidth(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return strings.Repeat(".", max)
+	}
+
+	var b strings.Builder
+	for _, r := range s {
+		next := b.String() + string(r)
+		if lipgloss.Width(next)+3 > max {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "..."
+}
+
+func overlayCentered(base, panel string, width, height int) string {
+	baseLines := strings.Split(base, "\n")
+	for len(baseLines) < height {
+		baseLines = append(baseLines, strings.Repeat(" ", width))
+	}
+	panelLines := strings.Split(panel, "\n")
+	top := (height - len(panelLines)) / 2
+	if top < 0 {
+		top = 0
+	}
+	for i, line := range panelLines {
+		target := top + i
+		if target >= len(baseLines) {
+			break
+		}
+		lineWidth := lipgloss.Width(line)
+		left := (width - lineWidth) / 2
+		if left < 0 {
+			left = 0
+		}
+		right := width - left - lineWidth
+		if right < 0 {
+			right = 0
+		}
+		baseLines[target] = strings.Repeat(" ", left) + line + strings.Repeat(" ", right)
+	}
+	return strings.Join(baseLines, "\n")
+}
+
 func (m *Model) moveFocusLeft() {
 	if m.outline.Visible {
 		switch m.focus {
@@ -494,4 +641,3 @@ func (m *Model) moveFocusRight() {
 		}
 	}
 }
-

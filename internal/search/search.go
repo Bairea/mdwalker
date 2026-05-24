@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bairea/mdwalker/internal/discover"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/bairea/mdwalker/internal/discover"
 )
 
 type SearchMode int
@@ -191,8 +191,10 @@ func (m Model) View() string {
 		return ""
 	}
 	modeLabel := countStyle.Render("[content]")
+	title := "Search content"
 	if m.Mode == ModeFileName {
 		modeLabel = countStyle.Render("[files]")
+		title = "Search files"
 	}
 	count := ""
 	if m.Mode == ModeContent && len(m.Matches) > 0 {
@@ -200,7 +202,25 @@ func (m Model) View() string {
 	} else if m.Mode == ModeFileName && len(m.FileMatches) > 0 {
 		count = countStyle.Render(fmt.Sprintf(" %d/%d", m.FileCurrent+1, len(m.FileMatches)))
 	}
-	return barStyle.Render(" /" + m.input.View() + " " + modeLabel + count + " Tab:switch Esc:cancel")
+	header := barStyle.Render(" " + title + "\n /" + m.input.View() + " " + modeLabel + count + " Tab:switch Esc:cancel")
+	if m.Mode != ModeFileName || len(m.FileMatches) == 0 {
+		return header
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	for i, match := range m.FileMatches {
+		if i >= 8 {
+			break
+		}
+		line := "  " + match.Entry.Path
+		if i == m.FileCurrent {
+			line = selectedCandidateStyle.Render(line)
+		}
+		b.WriteString("\n")
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -209,3 +229,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	m.Query = m.input.Value()
 	return m, cmd
 }
+
+var selectedCandidateStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("62")).
+	Foreground(lipgloss.Color("255"))
