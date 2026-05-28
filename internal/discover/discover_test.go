@@ -38,7 +38,7 @@ func TestScanIncludesMarkdownAndPreviewableImages(t *testing.T) {
 
 func TestScanSkipSubdirs(t *testing.T) {
 	dir := t.TempDir()
-	os.Chdir(dir)
+	t.Chdir(dir)
 
 	os.MkdirAll(filepath.Join(".claude", "skills", "golang-cli"), 0755)
 	os.WriteFile(filepath.Join(".claude", "skills", "golang-cli", "SKILL.md"), []byte("# skill"), 0644)
@@ -73,9 +73,17 @@ func TestScanSkipSubdirs(t *testing.T) {
 	}
 }
 
+func TestShouldSkipDirMatchesSlashPatternsOnWindowsPaths(t *testing.T) {
+	dir := filepath.Join(".claude", "skills")
+
+	if !shouldSkipDir(dir, []string{"*/skills"}) {
+		t.Fatalf("shouldSkipDir(%q, [*/skills]) = false, want true", dir)
+	}
+}
+
 func TestScanDedup(t *testing.T) {
 	dir := t.TempDir()
-	os.Chdir(dir)
+	t.Chdir(dir)
 
 	os.MkdirAll("docs", 0755)
 	os.WriteFile(filepath.Join("docs", "design.md"), []byte("# design"), 0644)

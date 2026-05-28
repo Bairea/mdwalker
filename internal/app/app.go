@@ -61,6 +61,7 @@ var (
 	inactivePaneStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("240"))
+	openImage = markdown.OpenImage
 )
 
 func New(root string) *Model {
@@ -450,7 +451,7 @@ func (m *Model) openCurrentImage() {
 	refs := markdown.ExtractImages(content)
 	for _, ref := range refs {
 		if ref.Line == line {
-			markdown.OpenImage(ref.Path)
+			openImage(m.preview.ResolveAssetPath(ref.Path))
 			break
 		}
 	}

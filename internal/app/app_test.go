@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,28 @@ import (
 	"github.com/bairea/mdwalker/internal/search"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+type rendererProbeModel struct {
+	view string
+}
+
+func (m rendererProbeModel) Init() tea.Cmd {
+	return tea.Sequence(
+		func() tea.Msg { return tea.WindowSizeMsg{Width: 40, Height: 8} },
+		func() tea.Msg { return tea.Quit() },
+	)
+}
+
+func (m rendererProbeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m rendererProbeModel) View() string {
+	return m.view
+}
 
 func TestSlashActivatesFileSearchWithoutTypingSlash(t *testing.T) {
 	m := New(t.TempDir())
@@ -119,6 +143,185 @@ func TestFileCursorMovementDoesNotInvokeExternalMermaidRenderer(t *testing.T) {
 	}
 }
 
+func TestFileCursorMovementPreviewDoesNotLeakImagePlaceholders(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "plain.md"), []byte("# Plain"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "images.md"), []byte("# Images\n\n![screenshot](screenshot.png)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "screenshot.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("WEZTERM_EXECUTABLE", "")
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(filesLoadedMsg{entries: []discover.FileEntry{
+		{Path: "plain.md", ModTime: time.Now()},
+		{Path: "images.md", ModTime: time.Now()},
+	}})
+	m.focus = focusFiles
+
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	view := m.View()
+	if strings.Contains(view, "%MDWALKER_IMG_") {
+		t.Fatalf("lightweight markdown preview leaked image placeholder token: %q", view)
+	}
+	if !strings.Contains(view, "[Image: screenshot.png]") {
+		t.Fatalf("lightweight markdown preview did not render image placeholder: %q", view)
+	}
+}
+
+func TestFileCursorMovementPreviewDoesNotLeakImagePlaceholdersForSubdirFile(t *testing.T) {
+	root := filepath.Join("..", "..")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(filesLoadedMsg{entries: []discover.FileEntry{
+		{Path: filepath.Join("testdata", "semantic.md"), ModTime: time.Now()},
+		{Path: filepath.Join("testdata", "images.md"), ModTime: time.Now()},
+	}})
+	m.focus = focusFiles
+
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	view := m.View()
+	if strings.Contains(view, "%MDWALKER_IMG_") {
+		t.Fatalf("subdir markdown preview leaked image placeholder token: %q", view)
+	}
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("subdir markdown preview did not render native referenced image via iTerm2: %q", view)
+	}
+}
+
+func TestOpenSelectedMarkdownImageFileDoesNotLeakImagePlaceholders(t *testing.T) {
+	root := filepath.Join("..", "..")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	entries, err := discover.Scan(root, &m.wl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(filesLoadedMsg{entries: entries})
+	for i, entry := range m.files.Entries {
+		if entry.Path == filepath.Join("testdata", "images.md") {
+			m.files.Cursor = i
+			m.files.UpdateViewport()
+			break
+		}
+	}
+
+	m.openSelectedFile()
+
+	view := m.View()
+	if strings.Contains(view, "%MDWALKER_IMG_") {
+		t.Fatalf("opened markdown image file leaked image placeholder token: %q", view)
+	}
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("opened markdown image file did not render native image via iTerm2: %q", view)
+	}
+}
+
+func TestMarkdownImagePreviewNeverLeaksPlaceholdersAcrossWidths(t *testing.T) {
+	root := filepath.Join("..", "..")
+	for _, width := range []int{62, 80, 100, 120, 160} {
+		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+			t.Setenv("KITTY_WINDOW_ID", "")
+			t.Setenv("TERM", "xterm-256color")
+			t.Setenv("TERM_PROGRAM", "WezTerm")
+
+			m := New(root)
+			m.Update(tea.WindowSizeMsg{Width: width, Height: 16})
+			m.Update(filesLoadedMsg{entries: []discover.FileEntry{
+				{Path: filepath.Join("testdata", "semantic.md"), ModTime: time.Now()},
+				{Path: filepath.Join("testdata", "images.md"), ModTime: time.Now()},
+			}})
+			m.focus = focusFiles
+
+			m.Update(tea.KeyMsg{Type: tea.KeyDown})
+			lightView := m.View()
+			if strings.Contains(lightView, "%MDWALKER_IMG_") {
+				t.Fatalf("light preview leaked image placeholder at width %d: %q", width, lightView)
+			}
+
+			m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			fullView := m.View()
+			if strings.Contains(fullView, "%MDWALKER_IMG_") {
+				t.Fatalf("open preview leaked image placeholder at width %d: %q", width, fullView)
+			}
+		})
+	}
+}
+
+func TestFileCursorMovementPreviewsImageFileNatively(t *testing.T) {
+	root := filepath.Join("..", "..")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(filesLoadedMsg{entries: []discover.FileEntry{
+		{Path: filepath.Join("testdata", "semantic.md"), ModTime: time.Now()},
+		{Path: filepath.Join("testdata", "screenshot.png"), ModTime: time.Now()},
+	}})
+	m.focus = focusFiles
+
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("image file cursor preview did not render native image via iTerm2: %q", view)
+	}
+}
+
+func TestOpenCurrentImageResolvesRelativePathFromMarkdownFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "assets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	docPath := filepath.Join(root, "docs", "doc.md")
+	imagePath := filepath.Join(root, "docs", "assets", "pic.png")
+	if err := os.WriteFile(docPath, []byte("# Doc\n\n![pic](assets/pic.png)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(imagePath, []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var opened string
+	oldOpenImage := openImage
+	openImage = func(path string) error {
+		opened = path
+		return nil
+	}
+	defer func() { openImage = oldOpenImage }()
+
+	m := New(root)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(filesLoadedMsg{entries: []discover.FileEntry{{Path: filepath.Join("docs", "doc.md"), ModTime: time.Now()}}})
+	m.openSelectedFile()
+	m.preview.ScrollToLine(2)
+
+	m.openCurrentImage()
+
+	if opened != imagePath {
+		t.Fatalf("openCurrentImage opened %q, want %q", opened, imagePath)
+	}
+}
+
 func TestStatusBarShowsCurrentFocus(t *testing.T) {
 	m := New(t.TempDir())
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
@@ -126,6 +329,46 @@ func TestStatusBarShowsCurrentFocus(t *testing.T) {
 
 	if !strings.Contains(m.renderStatusBar(), "focus:preview") {
 		t.Fatalf("status bar did not show current focus: %q", m.renderStatusBar())
+	}
+}
+
+func TestRenderPanePreservesITermImageSequence(t *testing.T) {
+	image := "\x1b]1337;File=width=40;height=10;inline=1:abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\x07"
+
+	view := renderPane(image, 60, 12, true)
+
+	if !strings.Contains(view, image) {
+		t.Fatalf("renderPane corrupted iTerm image sequence: %q", view)
+	}
+}
+
+func TestRenderPanePreservesKittyImageSequence(t *testing.T) {
+	image := "\x1b_Ga=T,f=100,t=f,c=40,r=10;abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\x1b\\"
+
+	view := renderPane(image, 60, 12, true)
+
+	if !strings.Contains(view, image) {
+		t.Fatalf("renderPane corrupted kitty image sequence: %q", view)
+	}
+}
+
+func TestBubbleTeaRendererPreservesKittyImageSequence(t *testing.T) {
+	image := "\x1b_Ga=T,f=100,t=f,c=40,r=10;abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\x1b\\"
+	var out bytes.Buffer
+
+	_, err := tea.NewProgram(
+		rendererProbeModel{view: image},
+		tea.WithInput(nil),
+		tea.WithOutput(&out),
+		tea.WithoutSignalHandler(),
+		tea.WithoutCatchPanics(),
+	).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), image) {
+		t.Fatalf("bubbletea renderer corrupted kitty image sequence: %q", out.String())
 	}
 }
 

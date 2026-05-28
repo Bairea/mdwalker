@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -155,12 +156,14 @@ func scanUnignoreDirs(root string, wl *config.WhitelistConfig) []FileEntry {
 }
 
 func shouldSkipDir(relPath string, skipPatterns []string) bool {
+	relPath = filepath.ToSlash(relPath)
 	for _, pat := range skipPatterns {
+		pat = filepath.ToSlash(pat)
 		for dir := relPath; dir != "." && dir != "/"; {
-			if matched, _ := filepath.Match(pat, dir); matched {
+			if matched, _ := path.Match(pat, dir); matched {
 				return true
 			}
-			dir = filepath.Dir(dir)
+			dir = path.Dir(dir)
 		}
 	}
 	return false

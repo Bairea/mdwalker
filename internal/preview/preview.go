@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/bairea/mdwalker/internal/markdown"
 )
@@ -30,6 +31,8 @@ type Model struct {
 	cursorLine  int
 	rendered    string
 	renderMedia bool
+	hasImage    bool
+	needsClear  bool
 	width       int
 	height      int
 	ready       bool
@@ -57,6 +60,8 @@ func (m *Model) LoadFileLight(root, path string) error {
 func (m *Model) loadFile(root, path string, renderMedia bool) error {
 	m.root = root
 	m.renderMedia = renderMedia
+	m.hasImage = false
+	m.needsClear = true
 	fullPath := filepath.Join(root, path)
 	if isImagePath(path) {
 		m.filePath = path
@@ -65,6 +70,7 @@ func (m *Model) loadFile(root, path string, renderMedia bool) error {
 		m.foldStates = make(map[int]bool)
 		m.cursorLine = 0
 		m.renderFolded()
+		m.viewport.GotoTop()
 		return nil
 	}
 
@@ -77,6 +83,7 @@ func (m *Model) loadFile(root, path string, renderMedia bool) error {
 	m.parseHeadings()
 	m.cursorLine = 0
 	m.renderFolded()
+	m.viewport.GotoTop()
 	return nil
 }
 
@@ -161,6 +168,7 @@ func (m *Model) ToggleFold(cursorLine int) {
 	}
 	line := m.headings[headingIdx].Line
 	m.foldStates[line] = !m.foldStates[line]
+	m.needsClear = true
 	m.renderFolded()
 }
 
@@ -212,8 +220,14 @@ func (m *Model) renderFolded() {
 		}
 	}
 	filtered := strings.Join(visible, "\n")
-	markdown, blocks := m.extractMediaBlocks(filtered)
-	rendered, err := m.renderer.Render(markdown)
+	if markdown.HasTerminalImageSequence(filtered) {
+		m.rendered = filtered
+		m.hasImage = true
+		m.viewport.SetContent(m.rendered)
+		return
+	}
+	mdContent, blocks := m.extractMediaBlocks(filtered)
+	rendered, err := m.renderer.Render(mdContent)
 	if err != nil {
 		m.rendered = filtered
 		m.viewport.SetContent(filtered)
@@ -234,6 +248,9 @@ func (m *Model) renderFolded() {
 		}
 		rendered = strings.Join(lines, "\n")
 	}
+	if markdown.HasTerminalImageSequence(rendered) {
+		m.hasImage = true
+	}
 	m.rendered = rendered
 	m.viewport.SetContent(rendered)
 }
@@ -248,6 +265,9 @@ func (m *Model) ScrollHalfPageDown() { m.viewport.HalfViewDown() }
 func (m Model) FilePath() string { return m.filePath }
 func (m Model) Content() string  { return m.content }
 func (m Model) CurrentLine() int { return m.cursorLine }
+func (m Model) ResolveAssetPath(path string) string {
+	return m.resolveAssetPath(path)
+}
 func (m *Model) ScrollToLine(line int) {
 	m.cursorLine = line
 	m.viewport.SetYOffset(m.renderedOffsetForLine(line))
@@ -332,8 +352,70 @@ func (m Model) nearestHeadingLine(visibleRow int) int {
 	return best
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
+	if m.hasImage {
+		if m.needsClear {
+			m.needsClear = false
+			return markdown.ClearAllImages() + m.mediaSafeView()
+		}
+		return m.mediaSafeView()
+	}
+	if markdown.HasTerminalImageSequence(m.rendered) {
+		return m.mediaSafeView()
+	}
 	return m.viewport.View()
+}
+
+func (m Model) mediaSafeView() string {
+	if m.viewport.Width <= 0 || m.viewport.Height <= 0 {
+		return ""
+	}
+	lines := strings.Split(m.rendered, "\n")
+	top := m.viewport.YOffset
+	if top < 0 {
+		top = 0
+	}
+	if top > len(lines) {
+		top = len(lines)
+	}
+	bottom := top + m.viewport.Height
+	if bottom > len(lines) {
+		bottom = len(lines)
+	}
+	visible := append([]string{}, lines[top:bottom]...)
+	for len(visible) < m.viewport.Height {
+		visible = append(visible, "")
+	}
+	for i, line := range visible {
+		if markdown.HasTerminalImageSequence(line) {
+			visible[i] = padVisibleLine(line, m.viewport.Width)
+			continue
+		}
+		visible[i] = padVisibleLine(line, m.viewport.Width)
+	}
+	return strings.Join(visible, "\n")
+}
+
+func padVisibleLine(line string, width int) string {
+	if lipgloss.Width(line) > width {
+		return truncateVisibleLine(line, width)
+	}
+	return line + strings.Repeat(" ", width-lipgloss.Width(line))
+}
+
+func truncateVisibleLine(line string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range line {
+		next := b.String() + string(r)
+		if lipgloss.Width(next) > width {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -456,6 +538,12 @@ func (m Model) resolveAssetPath(path string) string {
 
 func (m Model) renderImage(fullPath, displayPath string) string {
 	if !m.renderMedia {
+		if markdown.TerminalSupportsImages() {
+			rendered := markdown.RenderImageInline(fullPath, m.mediaWidth(), m.mediaHeight())
+			if strings.TrimSpace(rendered) != "" {
+				return "\n" + rendered + "\n"
+			}
+		}
 		return markdown.RenderImagePlaceholder(markdown.ImageRef{Path: displayPath})
 	}
 	w, h := m.mediaWidth(), m.mediaHeight()

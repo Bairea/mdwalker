@@ -47,7 +47,7 @@ func TestLoadWhitelistDefaults(t *testing.T) {
 
 func TestLoadWhitelistMergeProject(t *testing.T) {
 	dir := t.TempDir()
-	os.Chdir(dir)
+	t.Chdir(dir)
 
 	projectYAML := `
 unignore:
@@ -112,8 +112,9 @@ skip_subdirs:
 func TestLoadWhitelistMergeGlobal(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	dir := t.TempDir()
-	os.Chdir(dir)
+	t.Chdir(dir)
 
 	configDir := filepath.Join(home, ".config", "mdwalker")
 	os.MkdirAll(configDir, 0755)

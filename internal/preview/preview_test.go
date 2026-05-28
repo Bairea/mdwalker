@@ -3,11 +3,13 @@ package preview
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestPreviewImageFileUsesImagePlaceholder(t *testing.T) {
+	disableNativeImageProtocol(t)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "diagram.png"), []byte("not-real-image"), 0644); err != nil {
 		t.Fatal(err)
@@ -25,6 +27,7 @@ func TestPreviewImageFileUsesImagePlaceholder(t *testing.T) {
 }
 
 func TestPreviewImageFileRendersTerminalImageWhenRendererAvailable(t *testing.T) {
+	disableNativeImageProtocol(t)
 	root := t.TempDir()
 	imagePath := filepath.Join(root, "diagram.png")
 	if err := os.WriteFile(imagePath, []byte("not-real-image"), 0644); err != nil {
@@ -49,6 +52,7 @@ func TestPreviewImageFileRendersTerminalImageWhenRendererAvailable(t *testing.T)
 }
 
 func TestPreviewMarkdownImageResolvesRelativePathAndRenders(t *testing.T) {
+	disableNativeImageProtocol(t)
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "docs"), 0755); err != nil {
 		t.Fatal(err)
@@ -82,6 +86,89 @@ func TestPreviewMarkdownImageResolvesRelativePathAndRenders(t *testing.T) {
 	}
 }
 
+func TestPreviewMarkdownImageWithTitleRendersNativeImage(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "docs"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "docs", "assets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "doc.md"), []byte("before\n\n![pic](assets/pic.png \"caption\")\n\nafter\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "assets", "pic.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(100, 20)
+	if err := m.LoadFile(root, "docs/doc.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("markdown image with title did not render native image via iTerm2 protocol: %q", view)
+	}
+	if strings.Contains(view, "[Image: assets/pic.png") {
+		t.Fatalf("markdown image with title fell back to placeholder: %q", view)
+	}
+}
+
+func TestPreviewMarkdownFixtureRendersReferencedImageNatively(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(100, 20)
+	if err := m.LoadFile(root, "images.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("testdata/images.md referenced image did not render natively via iTerm2 protocol: %q", view)
+	}
+	if !strings.Contains(view, "inline=1") {
+		t.Fatalf("testdata/images.md referenced image did not include inline=1: %q", view)
+	}
+}
+
+func TestLightPreviewRendersNativeImageWithoutExternalRenderer(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte("# Images\n\n![pic](pic.png)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pic.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "chafa.log")
+	installFakeChafa(t, root, logPath)
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(100, 20)
+	if err := m.LoadFileLight(root, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("light preview did not render native image via iTerm2 protocol: %q", view)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("light preview invoked external image renderer; err=%v", err)
+	}
+}
+
 func TestPreviewReplacesMermaidFenceWithRenderablePlaceholder(t *testing.T) {
 	t.Setenv("MDWALKER_MMDC", "definitely-missing-mmdc")
 	root := t.TempDir()
@@ -107,6 +194,7 @@ func TestPreviewReplacesMermaidFenceWithRenderablePlaceholder(t *testing.T) {
 }
 
 func TestPreviewRendersMermaidThroughDiagramAndImagePipeline(t *testing.T) {
+	disableNativeImageProtocol(t)
 	root := t.TempDir()
 	t.Setenv("HOME", root)
 	installFakeChafa(t, root, filepath.Join(root, "chafa.log"))
@@ -223,6 +311,7 @@ func TestScrollToLineUsesRenderedOffsetNotSourceLineApproximation(t *testing.T) 
 }
 
 func TestPreviewImageRendererUsesViewportBoundedSize(t *testing.T) {
+	disableNativeImageProtocol(t)
 	root := t.TempDir()
 	imagePath := filepath.Join(root, "diagram.png")
 	if err := os.WriteFile(imagePath, []byte("not-real-image"), 0644); err != nil {
@@ -246,8 +335,225 @@ func TestPreviewImageRendererUsesViewportBoundedSize(t *testing.T) {
 	}
 }
 
+func TestPreviewImageFilePreservesNativeImageSequence(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "diagram.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(80, 20)
+	if err := m.LoadFile(root, "diagram.png"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("preview corrupted native iTerm2 image sequence: %q", view)
+	}
+}
+
+func TestPreviewImageFileUsesNativeImageWithoutExternalRenderer(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "diagram.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "chafa.log")
+	installFakeChafa(t, root, logPath)
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(100, 20)
+	if err := m.LoadFile(root, "diagram.png"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("image file did not render through native iTerm2 protocol: %q", view)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("image file invoked external image renderer; err=%v", err)
+	}
+}
+
+func TestImageSwitchClearsPreviousImageSequence(t *testing.T) {
+	root := t.TempDir()
+	img1 := filepath.Join(root, "alpha.png")
+	img2 := filepath.Join(root, "beta.png")
+	if err := os.WriteFile(img1, []byte("img1-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(img2, []byte("img2-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(80, 20)
+
+	if err := m.LoadFile(root, "alpha.png"); err != nil {
+		t.Fatal(err)
+	}
+	view1 := m.View()
+	if !strings.Contains(view1, "\x1b]1337;File=") {
+		t.Fatalf("first image did not render iTerm2 sequence: %q", view1)
+	}
+
+	if err := m.LoadFile(root, "beta.png"); err != nil {
+		t.Fatal(err)
+	}
+	view2 := m.View()
+	if !strings.Contains(view2, "\x1b]1337;File=") {
+		t.Fatalf("second image did not render iTerm2 sequence: %q", view2)
+	}
+
+	if strings.Contains(view2, "img1-data") {
+		t.Fatalf("second view still contains first image data (residual): %q", view2)
+	}
+}
+
+func TestMarkdownImageSwitchClearsPreviousInlineImage(t *testing.T) {
+	root := t.TempDir()
+	doc1 := filepath.Join(root, "doc1.md")
+	doc2 := filepath.Join(root, "doc2.md")
+	img1 := filepath.Join(root, "pic1.png")
+	img2 := filepath.Join(root, "pic2.png")
+	if err := os.WriteFile(doc1, []byte("# Doc1\n\n![pic1](pic1.png)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(doc2, []byte("# Doc2\n\n![pic2](pic2.png)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(img1, []byte("img1-raw-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(img2, []byte("img2-raw-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	m := New()
+	m.SetSize(100, 20)
+
+	if err := m.LoadFile(root, "doc1.md"); err != nil {
+		t.Fatal(err)
+	}
+	view1 := m.View()
+	if !strings.Contains(view1, "\x1b]1337;File=") {
+		t.Fatalf("doc1 image did not render iTerm2 sequence: %q", view1)
+	}
+
+	if err := m.LoadFile(root, "doc2.md"); err != nil {
+		t.Fatal(err)
+	}
+	view2 := m.View()
+	if !strings.Contains(view2, "\x1b]1337;File=") {
+		t.Fatalf("doc2 image did not render iTerm2 sequence: %q", view2)
+	}
+
+	if strings.Contains(view2, "img1-raw-bytes") {
+		t.Fatalf("doc2 view still contains doc1 image data (residual): %q", view2)
+	}
+}
+
+func TestKittyImageSwitchEmitsDeleteAll(t *testing.T) {
+	root := t.TempDir()
+	img1 := filepath.Join(root, "alpha.png")
+	img2 := filepath.Join(root, "beta.png")
+	if err := os.WriteFile(img1, []byte("img1-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(img2, []byte("img2-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KITTY_WINDOW_ID", "1")
+	t.Setenv("TERM", "xterm-kitty")
+	t.Setenv("TERM_PROGRAM", "")
+
+	m := New()
+	m.SetSize(80, 20)
+
+	if err := m.LoadFile(root, "alpha.png"); err != nil {
+		t.Fatal(err)
+	}
+	view1 := m.View()
+	if !strings.Contains(view1, "\x1b_G") {
+		t.Fatalf("first image did not render Kitty sequence: %q", view1)
+	}
+
+	if err := m.LoadFile(root, "beta.png"); err != nil {
+		t.Fatal(err)
+	}
+	view2 := m.View()
+	if !strings.Contains(view2, "\x1b_G") {
+		t.Fatalf("second image did not render Kitty sequence: %q", view2)
+	}
+	if !strings.Contains(view2, "\x1b_Ga=d,d=a\x1b\\") {
+		t.Fatalf("Kitty view missing delete-all before new image: %q", view2)
+	}
+}
+
+func TestGlamourPreservesMediaPlaceholder(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte("# Title\n\n![pic](pic.png)\n\nAfter.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pic.png"), []byte("not-real-image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	disableNativeImageProtocol(t)
+
+	m := New()
+	m.SetSize(100, 20)
+	if err := m.LoadFile(root, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+
+	view := m.View()
+	if strings.Contains(view, "![pic](pic.png)") {
+		t.Fatalf("raw markdown image syntax leaked into view: %q", view)
+	}
+	if !strings.Contains(view, "[Image: pic.png]") {
+		t.Fatalf("image placeholder not rendered: %q", view)
+	}
+}
+
+func disableNativeImageProtocol(t *testing.T) {
+	t.Helper()
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("WEZTERM_EXECUTABLE", "")
+}
+
 func installFakeChafa(t *testing.T, dir, logPath string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		writeExecutable(t, filepath.Join(dir, "chafa.cmd"), `@echo off
+set last=
+:loop
+if "%~1"=="" goto done
+set last=%~1
+shift
+goto loop
+:done
+if not "%FAKE_CHAFA_LOG%"=="" echo %last%>"%FAKE_CHAFA_LOG%"
+echo IMAGE_RENDER:%last%
+`)
+		t.Setenv("FAKE_CHAFA_LOG", logPath)
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		return
+	}
 	writeExecutable(t, filepath.Join(dir, "chafa"), `#!/bin/sh
 last=""
 for arg do
@@ -264,6 +570,26 @@ printf 'IMAGE_RENDER:%s\n' "$last"
 
 func installFakeMMDC(t *testing.T, dir string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(dir, "mmdc.cmd")
+		writeExecutable(t, path, `@echo off
+set out=
+:loop
+if "%~1"=="" goto done
+if "%~1"=="-o" goto foundout
+shift
+goto loop
+:foundout
+shift
+set out=%~1
+shift
+goto loop
+:done
+echo fake png>"%out%"
+`)
+		t.Setenv("MDWALKER_MMDC", path)
+		return
+	}
 	path := filepath.Join(dir, "mmdc")
 	writeExecutable(t, path, `#!/bin/sh
 out=""
