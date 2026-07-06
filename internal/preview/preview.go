@@ -1,7 +1,6 @@
 package preview
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
-
-	"github.com/bairea/mdwalker/internal/markdown"
 )
 
 type Heading struct {
@@ -21,21 +17,18 @@ type Heading struct {
 }
 
 type Model struct {
-	viewport    viewport.Model
-	renderer    *glamour.TermRenderer
-	root        string
-	filePath    string
-	content     string
-	headings    []Heading
-	foldStates  map[int]bool
-	cursorLine  int
-	rendered    string
-	renderMedia bool
-	hasImage    bool
-	needsClear  bool
-	width       int
-	height      int
-	ready       bool
+	viewport   viewport.Model
+	renderer   *glamour.TermRenderer
+	root       string
+	filePath   string
+	content    string
+	headings   []Heading
+	foldStates map[int]bool
+	cursorLine int
+	rendered   string
+	width      int
+	height     int
+	ready      bool
 }
 
 func New() Model {
@@ -50,30 +43,8 @@ func New() Model {
 }
 
 func (m *Model) LoadFile(root, path string) error {
-	return m.loadFile(root, path, true)
-}
-
-func (m *Model) LoadFileLight(root, path string) error {
-	return m.loadFile(root, path, false)
-}
-
-func (m *Model) loadFile(root, path string, renderMedia bool) error {
 	m.root = root
-	m.renderMedia = renderMedia
-	m.hasImage = false
-	m.needsClear = true
 	fullPath := filepath.Join(root, path)
-	if isImagePath(path) {
-		m.filePath = path
-		m.content = m.renderImage(fullPath, path)
-		m.headings = nil
-		m.foldStates = make(map[int]bool)
-		m.cursorLine = 0
-		m.renderFolded()
-		m.viewport.GotoTop()
-		return nil
-	}
-
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		return err
@@ -168,7 +139,6 @@ func (m *Model) ToggleFold(cursorLine int) {
 	}
 	line := m.headings[headingIdx].Line
 	m.foldStates[line] = !m.foldStates[line]
-	m.needsClear = true
 	m.renderFolded()
 }
 
@@ -220,36 +190,11 @@ func (m *Model) renderFolded() {
 		}
 	}
 	filtered := strings.Join(visible, "\n")
-	if markdown.HasTerminalImageSequence(filtered) {
-		m.rendered = filtered
-		m.hasImage = true
-		m.viewport.SetContent(m.rendered)
-		return
-	}
-	mdContent, blocks := m.extractMediaBlocks(filtered)
-	rendered, err := m.renderer.Render(mdContent)
+	rendered, err := m.renderer.Render(filtered)
 	if err != nil {
 		m.rendered = filtered
 		m.viewport.SetContent(filtered)
 		return
-	}
-	for _, b := range blocks {
-		lines := strings.Split(rendered, "\n")
-		for i, line := range lines {
-			if strings.Contains(line, b.placeholder) {
-				outputLines := strings.Split(strings.Trim(b.output, "\n"), "\n")
-				newLines := make([]string, 0, len(lines)+len(outputLines))
-				newLines = append(newLines, lines[:i]...)
-				newLines = append(newLines, outputLines...)
-				newLines = append(newLines, lines[i+1:]...)
-				lines = newLines
-				break
-			}
-		}
-		rendered = strings.Join(lines, "\n")
-	}
-	if markdown.HasTerminalImageSequence(rendered) {
-		m.hasImage = true
 	}
 	m.rendered = rendered
 	m.viewport.SetContent(rendered)
@@ -265,9 +210,7 @@ func (m *Model) ScrollHalfPageDown() { m.viewport.HalfViewDown() }
 func (m Model) FilePath() string { return m.filePath }
 func (m Model) Content() string  { return m.content }
 func (m Model) CurrentLine() int { return m.cursorLine }
-func (m Model) ResolveAssetPath(path string) string {
-	return m.resolveAssetPath(path)
-}
+
 func (m *Model) ScrollToLine(line int) {
 	m.cursorLine = line
 	m.viewport.SetYOffset(m.renderedOffsetForLine(line))
@@ -352,232 +295,12 @@ func (m Model) nearestHeadingLine(visibleRow int) int {
 	return best
 }
 
-func (m *Model) View() string {
-	if m.hasImage {
-		if m.needsClear {
-			m.needsClear = false
-			return markdown.ClearAllImages() + m.mediaSafeView()
-		}
-		return m.mediaSafeView()
-	}
-	if markdown.HasTerminalImageSequence(m.rendered) {
-		return m.mediaSafeView()
-	}
+func (m Model) View() string {
 	return m.viewport.View()
-}
-
-func (m Model) mediaSafeView() string {
-	if m.viewport.Width <= 0 || m.viewport.Height <= 0 {
-		return ""
-	}
-	lines := strings.Split(m.rendered, "\n")
-	top := m.viewport.YOffset
-	if top < 0 {
-		top = 0
-	}
-	if top > len(lines) {
-		top = len(lines)
-	}
-	bottom := top + m.viewport.Height
-	if bottom > len(lines) {
-		bottom = len(lines)
-	}
-	visible := append([]string{}, lines[top:bottom]...)
-	for len(visible) < m.viewport.Height {
-		visible = append(visible, "")
-	}
-	for i, line := range visible {
-		if markdown.HasTerminalImageSequence(line) {
-			visible[i] = padVisibleLine(line, m.viewport.Width)
-			continue
-		}
-		visible[i] = padVisibleLine(line, m.viewport.Width)
-	}
-	return strings.Join(visible, "\n")
-}
-
-func padVisibleLine(line string, width int) string {
-	if lipgloss.Width(line) > width {
-		return truncateVisibleLine(line, width)
-	}
-	return line + strings.Repeat(" ", width-lipgloss.Width(line))
-}
-
-func truncateVisibleLine(line string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range line {
-		next := b.String() + string(r)
-		if lipgloss.Width(next) > width {
-			break
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
-}
-
-func isImagePath(path string) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
-		return true
-	default:
-		return false
-	}
-}
-
-type mediaBlock struct {
-	placeholder string
-	output      string
-}
-
-var mediaCounter int
-
-func (m Model) extractMediaBlocks(content string) (string, []mediaBlock) {
-	var blocks []mediaBlock
-	content = m.replaceMermaidWithPlaceholders(content, &blocks)
-	content = m.replaceImagesWithPlaceholders(content, &blocks)
-	return content, blocks
-}
-
-func (m Model) replaceMermaidWithPlaceholders(content string, blocks *[]mediaBlock) string {
-	lines := strings.Split(content, "\n")
-	out := make([]string, 0, len(lines))
-	var block []string
-	inMermaid := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !inMermaid && strings.HasPrefix(trimmed, "```mermaid") {
-			inMermaid = true
-			block = block[:0]
-			continue
-		}
-		if inMermaid {
-			if strings.HasPrefix(trimmed, "```") {
-				output := m.renderMermaidBlock(strings.Join(block, "\n"))
-				mediaCounter++
-				key := fmt.Sprintf("%%MDWALKER_MERMAID_%d%%", mediaCounter)
-				*blocks = append(*blocks, mediaBlock{key, output})
-				out = append(out, key)
-				inMermaid = false
-				continue
-			}
-			block = append(block, line)
-			continue
-		}
-		out = append(out, line)
-	}
-	if inMermaid {
-		output := m.renderMermaidBlock(strings.Join(block, "\n"))
-		mediaCounter++
-		key := fmt.Sprintf("%%MDWALKER_MERMAID_%d%%", mediaCounter)
-		*blocks = append(*blocks, mediaBlock{key, output})
-		out = append(out, key)
-	}
-	return strings.Join(out, "\n")
-}
-
-func (m Model) replaceImagesWithPlaceholders(content string, blocks *[]mediaBlock) string {
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		refs := markdown.ExtractImages(line)
-		if len(refs) == 0 {
-			continue
-		}
-		placeholders := make([]string, 0, len(refs))
-		for _, ref := range refs {
-			resolved := m.resolveAssetPath(ref.Path)
-			output := m.renderImage(resolved, ref.Path)
-			mediaCounter++
-			placeholder := fmt.Sprintf("%%MDWALKER_IMG_%d%%", mediaCounter)
-			*blocks = append(*blocks, mediaBlock{placeholder, output})
-			placeholders = append(placeholders, placeholder)
-		}
-		lines[i] = strings.Join(placeholders, " ")
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) renderMermaidBlock(content string) string {
-	if !m.renderMedia {
-		return "[Mermaid: press Enter to render]"
-	}
-	path, err := markdown.RenderMermaid(content)
-	if err != nil {
-		return "[Mermaid: render unavailable: " + err.Error() + "]"
-	}
-	w, h := m.mediaWidth(), m.mediaHeight()
-	if markdown.TerminalSupportsImages() {
-		rendered := markdown.RenderImageInline(path, w, h)
-		if strings.TrimSpace(rendered) != "" {
-			return "\n" + rendered + "\n"
-		}
-	}
-	rendered, err := markdown.ImageToHalfblock(path, w, h)
-	if err == nil && strings.TrimSpace(rendered) != "" {
-		return "\n" + rendered + "\n"
-	}
-	return "[Mermaid: " + path + "]"
-}
-
-func (m Model) resolveAssetPath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	baseDir := filepath.Dir(filepath.Join(m.root, m.filePath))
-	return filepath.Clean(filepath.Join(baseDir, path))
-}
-
-func (m Model) renderImage(fullPath, displayPath string) string {
-	if !m.renderMedia {
-		if markdown.TerminalSupportsImages() {
-			rendered := markdown.RenderImageInline(fullPath, m.mediaWidth(), m.mediaHeight())
-			if strings.TrimSpace(rendered) != "" {
-				return "\n" + rendered + "\n"
-			}
-		}
-		return markdown.RenderImagePlaceholder(markdown.ImageRef{Path: displayPath})
-	}
-	w, h := m.mediaWidth(), m.mediaHeight()
-	if markdown.TerminalSupportsImages() {
-		rendered := markdown.RenderImageInline(fullPath, w, h)
-		if strings.TrimSpace(rendered) != "" {
-			return "\n" + rendered + "\n"
-		}
-	}
-	rendered, err := markdown.ImageToHalfblock(fullPath, w, h)
-	if err == nil && strings.TrimSpace(rendered) != "" {
-		return "\n" + rendered + "\n"
-	}
-	return markdown.RenderImagePlaceholder(markdown.ImageRef{Path: displayPath})
-}
-
-func (m Model) mediaWidth() int {
-	width := m.width - 2
-	if width <= 0 {
-		return 80
-	}
-	if width > 120 {
-		return 120
-	}
-	return width
-}
-
-func (m Model) mediaHeight() int {
-	height := m.height - 2
-	if height <= 0 {
-		return 20
-	}
-	if height > 30 {
-		return 30
-	}
-	return height
 }
