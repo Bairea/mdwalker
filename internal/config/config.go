@@ -6,17 +6,12 @@ import (
 )
 
 type Config struct {
-	ImageProtocol string // auto | kitty | halfblock | off
-	MermaidMode   string // auto | code | browser
-	MmdcPath      string
-	ShowTime      bool
+	ShowTime bool
 }
 
 func Default() Config {
 	return Config{
-		ImageProtocol: "auto",
-		MermaidMode:   "auto",
-		MmdcPath:      "mmdc",
+		ShowTime: false,
 	}
 }
 
