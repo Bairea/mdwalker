@@ -9,8 +9,6 @@ AI agent 输出物专用终端 Markdown 工作台 — 在终端中快速浏览�
 - **统一搜索** — 按 `/` 打开搜索，文件列表模式搜文件名，预览模式搜内容
 - **树形文件视图** — 按 `t` 切换，按目录层级展示文件，j/k 按树形顺序移动
 - **标题折叠** — 预览中按 `Space` 折叠/展开当前标题下的内容
-- **Mermaid 图表** — 自动渲染 mermaid 代码块为图片（需安装 mmdc）
-- **终端图片直显** — WezTerm / iTerm2 / Ghostty / Kitty 中原生显示图片（需安装 chafa 作为降级方案）
 - **代码块操作** — 按 `y` 复制当前代码块到剪贴板
 - **文件监听** — 自动检测目录变化，实时更新文件列表
 - **历史导航** — 按 `b` 返回上一个打开的文件
@@ -50,14 +48,6 @@ go install github.com/bairea/mdwalker@latest
 
 也可以从 [GitHub Releases](https://github.com/Bairea/mdwalker/releases/latest) 下载 zip 解压后直接运行。
 
-### 可选增强
-
-| 工具 | 用途 | 安装 |
-|------|------|------|
-| mmdc | Mermaid 图表渲染 | `npm install -g @mermaid-js/mermaid-cli` |
-| chafa | 终端图片渲染（降级） | `brew install chafa` |
-| fd | 加速文件扫描 | `brew install fd` |
-
 ## 使用
 
 ```bash
@@ -66,7 +56,6 @@ mdwalker docs/            # 指定目录
 mdwalker README.md        # 单文件预览
 mdwalker --show-time      # 显示文件修改时间
 mdwalker --no-watch       # 关闭文件监听
-mdwalker --mermaid code   # Mermaid 只显示源码
 ```
 
 ## 快捷键
@@ -113,7 +102,6 @@ mdwalker --mermaid code   # Mermaid 只显示源码
 |------|------|
 | `Space` | 折叠 / 展开标题内容 |
 | `y` | 复制当前代码块 |
-| `i` | 用默认程序打开光标处的图片 |
 
 ### 全局
 
@@ -141,17 +129,11 @@ cat > demo/docs/overview.md << 'EOF'
 
 - 快速浏览 AI 生成的文档
 - 高效的标题导航
-- 支持代码块和图表
+- 支持代码块
 
 ## 架构
 
-```mermaid
-graph TD
-    A[用户] --> B[文件列表]
-    A --> C[预览面板]
-    B --> D[Markdown 渲染]
-    C --> D
-```
+本工具采用双面板设计，左侧文件列表与右侧预览面板联动。
 EOF
 
 cat > demo/docs/api.md << 'EOF'
@@ -315,15 +297,6 @@ vhs demo.tape
 `~/.config/mdwalker/config.toml`：
 
 ```toml
-# 图片协议: auto, kitty, halfblock, off
-image_protocol = "auto"
-
-# Mermaid 模式: auto, code, browser
-mermaid_mode = "auto"
-
-# mmdc 路径
-mmdc_path = "mmdc"
-
 # 显示文件修改时间（默认 false）
 show_time = false
 ```
