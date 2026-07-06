@@ -61,12 +61,9 @@ var (
 	inactivePaneStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("240"))
-	openImage = markdown.OpenImage
 )
 
 func New(root string) *Model {
-	markdown.CleanMermaidCache()
-
 	cfg := config.Load()
 	wl := config.LoadWhitelist()
 	files := filelist.New()
@@ -328,9 +325,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y":
 			m.copyCurrentBlock()
 
-		case "i":
-			m.openCurrentImage()
-
 		case "b":
 			if len(m.history) > 0 {
 				prev := m.history[len(m.history)-1]
@@ -416,23 +410,15 @@ func (m *Model) previewSelectedFile() {
 	if path == "" {
 		return
 	}
-	m.loadFileWithMedia(path, false, false)
+	m.loadFile(path, false)
 }
 
 func (m *Model) loadFile(path string, recordHistory bool) {
-	m.loadFileWithMedia(path, recordHistory, true)
-}
-
-func (m *Model) loadFileWithMedia(path string, recordHistory bool, renderMedia bool) {
 	currentPath := m.preview.FilePath()
 	if recordHistory && currentPath != "" && currentPath != path {
 		m.history = append(m.history, currentPath)
 	}
-	if renderMedia {
-		m.preview.LoadFile(m.root, path)
-	} else {
-		m.preview.LoadFileLight(m.root, path)
-	}
+	m.preview.LoadFile(m.root, path)
 	m.outline.SetContent(m.preview.Content())
 	m.codeBlocks = markdown.ExtractBlocks(m.preview.Content())
 }
@@ -442,18 +428,6 @@ func (m *Model) copyCurrentBlock() {
 	block := markdown.BlockAtLine(m.codeBlocks, line)
 	if block != nil {
 		markdown.CopyToClipboard(block.Content)
-	}
-}
-
-func (m *Model) openCurrentImage() {
-	line := m.preview.CurrentLine()
-	content := m.preview.Content()
-	refs := markdown.ExtractImages(content)
-	for _, ref := range refs {
-		if ref.Line == line {
-			openImage(m.preview.ResolveAssetPath(ref.Path))
-			break
-		}
 	}
 }
 
