@@ -248,7 +248,7 @@ func (m *Model) buildTreeView() (string, int) {
 				dirPrefix = "└─ "
 			}
 			line := dirPrefix + dirStyle.Render(dir+"/")
-				m.rowIndex = append(m.rowIndex, -1)
+			m.rowIndex = append(m.rowIndex, -1)
 			b.WriteString(line + "\n")
 			lineIdx++
 		}
@@ -280,9 +280,9 @@ func (m *Model) buildTreeView() (string, int) {
 				cursorRow = len(m.rowIndex)
 			}
 			m.rowIndex = append(m.rowIndex, entryIdx)
-				m.treeOrder = append(m.treeOrder, entryIdx)
-				b.WriteString(line + "\n")
-				lineIdx++
+			m.treeOrder = append(m.treeOrder, entryIdx)
+			b.WriteString(line + "\n")
+			lineIdx++
 		}
 	}
 	return b.String(), cursorRow

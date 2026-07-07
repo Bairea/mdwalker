@@ -30,4 +30,14 @@ Recent history uses Conventional Commit prefixes such as `feat:`, `fix:`, and `d
 ## 运行错误记录
 
 - 2026-05-27：在 Windows 环境运行 `go test ./internal/discover -run TestScanSkipSubdirs -count=1 -v` 时，测试失败于 `TempDir RemoveAll cleanup: unlinkat ... The process cannot access the file because it is being used by another process.`。必要环境信息：`go version go1.26.3 windows/amd64`，PowerShell，工作目录 `D:\Desktopfile\chores\mdwalker`。原因是测试中 `os.Chdir` 进入 `t.TempDir()` 后没有恢复当前目录，导致 Windows 无法清理临时目录；已改为 `t.Chdir`。
-- 2026-07-06：mdwalker 已简化为纯文本 Markdown 查看器，移除了 Mermaid 图表渲染和终端图片直显功能。
+
+## 项目定位变更记录
+
+- 2026-07-06：mdwalker 简化为纯文本 Markdown 查看器。移除的功能：
+  - Mermaid 图表渲染（mmdc 集成、缓存机制）
+  - 终端图片直显（Kitty/iTerm2/WezTerm 协议、chafa/viu fallback）
+  - 'i' 键打开图片功能
+  - 图片/Mermaid 相关配置字段（ImageProtocol、MermaidMode、MmdcPath）
+  - 文件扫描中的图片扩展名（.png/.jpg/.jpeg/.gif/.webp）
+  
+  Mermaid 代码块现为普通代码块，使用 Glamour 语法高亮。图片引用显示占位符 `[Image: path]`。文件列表仅扫描 `.md` 文件。
