@@ -34,12 +34,7 @@ var priorityFiles = map[string]int{
 var priorityDirs = []string{".ai", ".claude", ".codex", ".agents", ".pi", ".trae", ".omx"}
 var secondaryDirs = []string{"docs", "notes", "reports"}
 var previewableExts = map[string]bool{
-	".md":   true,
-	".png":  true,
-	".jpg":  true,
-	".jpeg": true,
-	".gif":  true,
-	".webp": true,
+	".md": true,
 }
 
 func Scan(root string, wl *config.WhitelistConfig) ([]FileEntry, error) {
@@ -71,7 +66,7 @@ func scanWithFD(root string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"--type", "f", "-H", "--extension", "md", "--extension", "png", "--extension", "jpg", "--extension", "jpeg", "--extension", "gif", "--extension", "webp", "--search-path", root}
+	args := []string{"--type", "f", "-H", "--extension", "md", "--search-path", root}
 	cmd := exec.Command("fd", args...)
 	out, err := cmd.Output()
 	if err != nil {
