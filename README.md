@@ -2,7 +2,7 @@
 
 AI agent 输出物专用终端 Markdown 工作台 — 在终端中快速浏览、导航、搜索 AI 生成的大量 .md 文件。
 
-![demo](demo.gif)
+![demo](docs/demo.gif)
 
 ## 核心功能
 

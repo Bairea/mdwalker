@@ -1,4 +1,4 @@
-Output demo.gif
+Output docs/demo.gif
 Set Theme "Catppuccin Mocha"
 Set FontFamily "Noto Sans Mono CJK SC"
 Set Width 1200
