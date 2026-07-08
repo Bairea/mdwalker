@@ -57,7 +57,11 @@ Sleep 1s
 Tab
 Sleep 1s
 
-# Enter 打开第一个匹配项对应的文件并跳转
+# Down 浏览匹配项，跳转到 api.md 的匹配
+Down
+Sleep 500ms
+
+# Enter 打开匹配项对应的文件并跳转
 Enter
 Sleep 800ms
 
