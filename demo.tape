@@ -42,9 +42,10 @@ Sleep 500ms
 Down
 Enter
 Sleep 800ms
-Down
-Enter
-Sleep 800ms
+
+# 关闭大纲
+Type "o"
+Sleep 300ms
 
 # 按 / 搜索内容
 Type "/"
@@ -52,23 +53,23 @@ Sleep 300ms
 Type "用户"
 Sleep 500ms
 
-# 浏览匹配项
-Type "n"
-Sleep 300ms
-
-# Tab 切换到文件名搜索
+# Tab 切换到全文件内容搜索
 Type "Tab"
 Sleep 500ms
 
-# 搜索文件名
-Type "api"
+# 再按 Tab 切换到全文件内容搜索
+Type "Tab"
 Sleep 500ms
 
-# Enter 打开匹配文件
+# 搜索词保留，跨所有文件匹配
+Type "n"
+Sleep 300ms
+
+# Enter 打开匹配文件并跳转到行
 Enter
 Sleep 800ms
 
-# 关闭搜索后折叠标题
+# 折叠标题
 Space
 Sleep 500ms
 
