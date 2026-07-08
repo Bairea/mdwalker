@@ -8,7 +8,7 @@ Set Padding 60
 Set Margin 60
 
 # 启动 mdwalker
-Type "mdwalker demo/docs/"
+Type "mdwalker testdata/"
 Enter
 Sleep 2s
 
@@ -47,17 +47,17 @@ Sleep 800ms
 Type "o"
 Sleep 300ms
 
-# 按 / 搜内容（当前文件搜"用户"，overview.md 有 2 处匹配）
+# 按 / 搜内容（当前文件搜"heading"，headings.md 有多处匹配）
 Type "/"
 Sleep 300ms
-Type "用户"
+Type "heading"
 Sleep 1s
 
-# Tab 切换到全文件内容搜索（匹配全部文件 4 处，标题变为 Search all files）
+# Tab 切换到全文件内容搜索（匹配全部文件多处）
 Tab
 Sleep 1s
 
-# Down 浏览匹配项，跳转到 api.md 的匹配
+# Down 浏览匹配项
 Down
 Sleep 500ms
 
