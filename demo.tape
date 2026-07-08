@@ -12,7 +12,7 @@ Type "mdwalker demo/docs/"
 Enter
 Sleep 2s
 
-# 上下移动浏览文件，预览跟着变化
+# 上下移动浏览文件
 Down
 Sleep 300ms
 Down
@@ -47,23 +47,19 @@ Sleep 800ms
 Type "o"
 Sleep 300ms
 
-# 按 / 搜索内容
+# 按 / 搜内容（当前文件搜"用户"，overview.md 有 2 处匹配）
 Type "/"
 Sleep 300ms
 Type "用户"
-Sleep 500ms
+Sleep 1s
 
-# Tab 切换搜索模式（内容 → 全文件内容）
+# Tab 切换到全文件内容搜索（overview.md 2 处 + api.md 2 处 = 4 处匹配）
 Tab
-Sleep 500ms
+Sleep 1s
 
-# 再按 Tab 切换搜索模式（全文件内容 → 文件名）
-Tab
-Sleep 500ms
-
-# 搜索词保留，跨所有文件匹配
+# n 浏览匹配项，跳转到 api.md 的匹配
 Type "n"
-Sleep 300ms
+Sleep 500ms
 
 # Enter 打开匹配文件并跳转到行
 Enter
