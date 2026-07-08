@@ -172,6 +172,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.openFile(m.files.Entries[idx].Path)
 						m.search.Activate(search.ModeContent)
 						m.focus = focusSearch
+					} else {
+						m.search.ToggleMode()
+						m.search.UpdateSearch(m.files.Entries, m.preview.Content())
 					}
 				} else {
 					m.search.ToggleMode()
