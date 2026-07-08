@@ -53,12 +53,12 @@ Sleep 300ms
 Type "用户"
 Sleep 500ms
 
-# Tab 切换到全文件内容搜索
-Type "Tab"
+# Tab 切换搜索模式（内容 → 全文件内容）
+Tab
 Sleep 500ms
 
-# 再按 Tab 切换到全文件内容搜索
-Type "Tab"
+# 再按 Tab 切换搜索模式（全文件内容 → 文件名）
+Tab
 Sleep 500ms
 
 # 搜索词保留，跨所有文件匹配
