@@ -53,15 +53,11 @@ Sleep 300ms
 Type "用户"
 Sleep 1s
 
-# Tab 切换到全文件内容搜索（overview.md 2 处 + api.md 2 处 = 4 处匹配）
+# Tab 切换到全文件内容搜索（匹配全部文件 4 处，标题变为 Search all files）
 Tab
 Sleep 1s
 
-# n 浏览匹配项，跳转到 api.md 的匹配
-Type "n"
-Sleep 500ms
-
-# Enter 打开匹配文件并跳转到行
+# Enter 打开第一个匹配项对应的文件并跳转
 Enter
 Sleep 800ms
 
