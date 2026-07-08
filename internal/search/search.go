@@ -2,6 +2,8 @@ package search
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bairea/mdwalker/internal/discover"
@@ -15,19 +17,22 @@ type SearchMode int
 const (
 	ModeContent SearchMode = iota
 	ModeFileName
+	ModeAllContent
 )
 
 type Model struct {
-	input       textinput.Model
-	Active      bool
-	Mode        SearchMode
-	Query       string
-	Matches     []Match
-	Current     int
-	FileMatches []FileMatch
-	FileCurrent int
-	width       int
-	height      int
+	input        textinput.Model
+	Active       bool
+	Mode         SearchMode
+	Query        string
+	Matches      []Match
+	Current      int
+	FileMatches  []FileMatch
+	FileCurrent  int
+	AllMatches   []AllContentMatch
+	AllCurrent   int
+	width        int
+	height       int
 }
 
 type Match struct {
@@ -38,6 +43,12 @@ type Match struct {
 type FileMatch struct {
 	Index int
 	Entry discover.FileEntry
+}
+
+type AllContentMatch struct {
+	Path string
+	Line int
+	Text string
 }
 
 var (
@@ -58,8 +69,10 @@ func (m *Model) Activate(mode SearchMode) {
 	m.Query = ""
 	m.Matches = nil
 	m.FileMatches = nil
+	m.AllMatches = nil
 	m.Current = 0
 	m.FileCurrent = 0
+	m.AllCurrent = 0
 	m.input.SetValue("")
 	if mode == ModeFileName {
 		m.input.Placeholder = "search files..."
@@ -69,17 +82,23 @@ func (m *Model) Activate(mode SearchMode) {
 }
 
 func (m *Model) ToggleMode() {
-	if m.Mode == ModeContent {
-		m.Mode = ModeFileName
-		m.input.Placeholder = "search files..."
-	} else {
+	switch m.Mode {
+	case ModeFileName:
 		m.Mode = ModeContent
 		m.input.Placeholder = "search..."
+	case ModeContent:
+		m.Mode = ModeAllContent
+		m.input.Placeholder = "search..."
+	case ModeAllContent:
+		m.Mode = ModeFileName
+		m.input.Placeholder = "search files..."
 	}
 	m.Matches = nil
 	m.FileMatches = nil
+	m.AllMatches = nil
 	m.Current = 0
 	m.FileCurrent = 0
+	m.AllCurrent = 0
 }
 
 func (m *Model) Deactivate() {
@@ -88,8 +107,10 @@ func (m *Model) Deactivate() {
 	m.Query = ""
 	m.Matches = nil
 	m.FileMatches = nil
+	m.AllMatches = nil
 	m.Current = 0
 	m.FileCurrent = 0
+	m.AllCurrent = 0
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -140,9 +161,43 @@ func (m *Model) SearchFiles(entries []discover.FileEntry) {
 	}
 }
 
+func (m *Model) SearchAllContent(root string, entries []discover.FileEntry) {
+	if m.Query == "" {
+		m.AllMatches = nil
+		return
+	}
+	m.AllMatches = nil
+	lower := strings.ToLower(m.Query)
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(root, entry.Path))
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			if strings.Contains(strings.ToLower(line), lower) {
+				m.AllMatches = append(m.AllMatches, AllContentMatch{
+					Path: entry.Path,
+					Line: i,
+					Text: line,
+				})
+			}
+		}
+	}
+	if m.AllCurrent >= len(m.AllMatches) {
+		m.AllCurrent = 0
+	}
+}
+
 func (m *Model) Next() {
 	if m.Mode == ModeFileName {
 		m.NextFile()
+		return
+	}
+	if m.Mode == ModeAllContent {
+		if len(m.AllMatches) > 0 {
+			m.AllCurrent = (m.AllCurrent + 1) % len(m.AllMatches)
+		}
 		return
 	}
 	if len(m.Matches) > 0 {
@@ -153,6 +208,15 @@ func (m *Model) Next() {
 func (m *Model) Prev() {
 	if m.Mode == ModeFileName {
 		m.PrevFile()
+		return
+	}
+	if m.Mode == ModeAllContent {
+		if len(m.AllMatches) > 0 {
+			m.AllCurrent--
+			if m.AllCurrent < 0 {
+				m.AllCurrent = len(m.AllMatches) - 1
+			}
+		}
 		return
 	}
 	if len(m.Matches) > 0 {
@@ -192,11 +256,21 @@ func (m Model) CurrentFileIndex() int {
 	return -1
 }
 
-func (m *Model) UpdateSearch(files []discover.FileEntry, content string) {
-	if m.Mode == ModeFileName {
+func (m Model) CurrentAllMatch() AllContentMatch {
+	if m.AllCurrent < len(m.AllMatches) {
+		return m.AllMatches[m.AllCurrent]
+	}
+	return AllContentMatch{}
+}
+
+func (m *Model) UpdateSearch(root string, files []discover.FileEntry, content string) {
+	switch m.Mode {
+	case ModeFileName:
 		m.SearchFiles(files)
-	} else {
+	case ModeContent:
 		m.Search(content)
+	case ModeAllContent:
+		m.SearchAllContent(root, files)
 	}
 }
 
@@ -215,12 +289,17 @@ func (m Model) View() string {
 	if m.Mode == ModeFileName {
 		modeLabel = "files"
 		title = "Search files"
+	} else if m.Mode == ModeAllContent {
+		modeLabel = "all"
+		title = "Search all files"
 	}
 	count := ""
 	if m.Mode == ModeContent && len(m.Matches) > 0 {
 		count = fmt.Sprintf("%d/%d", m.Current+1, len(m.Matches))
 	} else if m.Mode == ModeFileName && len(m.FileMatches) > 0 {
 		count = fmt.Sprintf("%d/%d", m.FileCurrent+1, len(m.FileMatches))
+	} else if m.Mode == ModeAllContent && len(m.AllMatches) > 0 {
+		count = fmt.Sprintf("%d/%d", m.AllCurrent+1, len(m.AllMatches))
 	}
 	meta := modeLabel
 	if count != "" {
@@ -278,9 +357,31 @@ func (m Model) View() string {
 		}
 	}
 
+	if m.Mode == ModeAllContent && len(m.AllMatches) > 0 {
+		b.WriteString("\n")
+		b.WriteString(countStyle.Render(strings.Repeat("─", contentWidth)))
+		for i, match := range m.AllMatches {
+			if i >= 8 {
+				b.WriteString("\n")
+				b.WriteString(countStyle.Render(fmt.Sprintf("  ... %d more matches", len(m.AllMatches)-8)))
+				break
+			}
+			prefix := "  "
+			if i == m.AllCurrent {
+				prefix = "› "
+			}
+			text := strings.TrimSpace(match.Text)
+			line := padRight(prefix+truncateCells(fmt.Sprintf("%s:L%d %s", match.Path, match.Line+1, text), contentWidth-2), contentWidth)
+			if i == m.AllCurrent {
+				line = selectedCandidateStyle.Render(line)
+			}
+			b.WriteString("\n")
+			b.WriteString(line)
+		}
+	}
+
 	return searchPanelStyle.Width(panelWidth).Render(b.String())
 }
-
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
