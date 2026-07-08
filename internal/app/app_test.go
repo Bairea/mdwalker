@@ -145,7 +145,7 @@ func TestClickPreviewHeadingThenSpaceFoldsThatHeadingOnly(t *testing.T) {
 	}
 }
 
-func TestFileSearchTabOpensCandidateAndSwitchesToContentSearch(t *testing.T) {
+func TestFileSearchTabSwitchesToContentMode(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"first.md", "second.md"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("# "+name+"\nneedle\n"), 0644); err != nil {
@@ -167,17 +167,11 @@ func TestFileSearchTabOpensCandidateAndSwitchesToContentSearch(t *testing.T) {
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
-	if got := m.preview.FilePath(); got != "second.md" {
-		t.Fatalf("Tab opened %q, want second.md", got)
-	}
 	if !m.search.Active || m.search.Mode != search.ModeContent {
-		t.Fatalf("Tab should keep search active in content mode; active=%v mode=%v", m.search.Active, m.search.Mode)
+		t.Fatalf("Tab should switch to content mode; active=%v mode=%v", m.search.Active, m.search.Mode)
 	}
-	if m.focus != focusSearch {
-		t.Fatalf("focus = %v, want search", m.focus)
-	}
-	if m.search.Query != "" {
-		t.Fatalf("content search query = %q, want empty after file selection", m.search.Query)
+	if m.search.Query != "second" {
+		t.Fatalf("query = %q, want preserved after mode switch", m.search.Query)
 	}
 }
 

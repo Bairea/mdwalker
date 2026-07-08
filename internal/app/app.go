@@ -166,20 +166,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "tab":
 			if m.search.Active {
-				if m.search.Mode == search.ModeFileName {
-					idx := m.search.CurrentFileIndex()
-					if idx >= 0 && idx < len(m.files.Entries) {
-						m.openFile(m.files.Entries[idx].Path)
-						m.search.Activate(search.ModeContent)
-						m.focus = focusSearch
-					} else {
-						m.search.ToggleMode()
-						m.search.UpdateSearch(m.files.Entries, m.preview.Content())
-					}
-				} else {
-					m.search.ToggleMode()
-					m.search.UpdateSearch(m.files.Entries, m.preview.Content())
-				}
+				m.search.ToggleMode()
+				m.search.UpdateSearch(m.root, m.files.Entries, m.preview.Content())
 				skipSearchInput = true
 			} else if m.outline.Visible {
 				m.focus = (m.focus + 1) % 3
@@ -262,6 +250,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.search.Active && m.search.Mode == search.ModeContent {
 				if len(m.search.Matches) > 0 {
 					m.preview.ScrollToLine(m.search.CurrentLine())
+					m.search.Deactivate()
+					m.focus = focusPreview
+				}
+				skipSearchInput = true
+				break
+			}
+			if m.search.Active && m.search.Mode == search.ModeAllContent {
+				match := m.search.CurrentAllMatch()
+				if match.Path != "" {
+					m.openFile(match.Path)
+					m.preview.ScrollToLine(match.Line)
 					m.search.Deactivate()
 					m.focus = focusPreview
 				}
@@ -381,7 +380,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.search.Active && !skipSearchInput {
 		m.search, cmd = m.search.Update(msg)
-		m.search.UpdateSearch(m.files.Entries, m.preview.Content())
+		m.search.UpdateSearch(m.root, m.files.Entries, m.preview.Content())
 		if m.search.Mode == search.ModeContent && len(m.search.Matches) > 0 {
 			m.preview.ScrollToLine(m.search.CurrentLine())
 		}
@@ -526,8 +525,10 @@ func (m Model) renderStatusBar() string {
 		mode := "content"
 		if m.search.Mode == search.ModeFileName {
 			mode = "files"
+		} else if m.search.Mode == search.ModeAllContent {
+			mode = "all"
 		}
-		right = fmt.Sprintf(" search:%s  Enter:open  Tab:select  Esc:cancel ", mode)
+		right = fmt.Sprintf(" search:%s  Enter:open  Tab:switch  Esc:cancel ", mode)
 	} else {
 		right = " q:quit  o:outline  /:search  r:rescan "
 	}
