@@ -51,18 +51,3 @@ func CopyToClipboard(text string) error {
 	return cmd.Run()
 }
 
-func IsDiff(block Block) bool {
-	return block.Language == "diff"
-}
-
-func DiffLines(content string) []string {
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(line, "-") {
-			lines[i] = "\033[41m" + line + "\033[0m"
-		} else if strings.HasPrefix(line, "+") {
-			lines[i] = "\033[42m" + line + "\033[0m"
-		}
-	}
-	return lines
-}
